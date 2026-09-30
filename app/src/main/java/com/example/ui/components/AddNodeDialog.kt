@@ -46,6 +46,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.model.OsType
 import com.example.ui.theme.CyberCyan
+import androidx.compose.foundation.border
+import com.example.ui.theme.DarkBorderSubtle
+import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.SparkBlue
 import com.example.ui.theme.DarkSurfaceElevated
@@ -168,10 +171,15 @@ fun AddNodeDialog(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surface
+                                    if (isSelected) SparkBlue.copy(alpha = 0.16f)
+                                    else DarkSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) SparkBlue.copy(alpha = 0.45f) else DarkBorderSubtle,
+                                    RoundedCornerShape(12.dp)
                                 )
                                 .clickable {
                                     selectedOs = os
@@ -204,10 +212,9 @@ fun AddNodeDialog(
                         ) {
                             Text(
                                 text = os.displayName,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.onSurface
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (isSelected) SparkBlue else TextSecondary
                             )
                         }
                     }
