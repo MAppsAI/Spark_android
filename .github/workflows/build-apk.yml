@@ -30,15 +30,6 @@ jobs:
           "$SDKMGR" "platform-tools" "platforms;android-36.1" "build-tools;36.1.0"
           [ -x "$ANDROID_HOME/build-tools/36.1.0/aapt2" ] || { echo "build-tools install failed"; exit 1; }
 
-      - name: Create debug keystore
-        run: |
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -storepass android -keypass android \
-            -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -76,15 +67,6 @@ jobs:
           yes | "$SDKMGR" --licenses > /dev/null 2>&1
           "$SDKMGR" "platform-tools" "platforms;android-36.1" "build-tools;36.1.0"
           [ -x "$ANDROID_HOME/build-tools/36.1.0/aapt2" ] || { echo "build-tools install failed"; exit 1; }
-
-      - name: Create debug keystore
-        run: |
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -storepass android -keypass android \
-            -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
