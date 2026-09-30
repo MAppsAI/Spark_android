@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.SystemTelemetry
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.DarkSurface
+import com.example.ui.theme.SparkBlueBright
 import com.example.ui.theme.DarkBorderSubtle
 import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.TerminalGreen
@@ -67,9 +71,10 @@ fun NodeTelemetryHeader(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(DarkSurfaceVariant)
-            .padding(12.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(DarkSurface)
+            .border(1.dp, DarkBorder, RoundedCornerShape(18.dp))
+            .padding(14.dp)
     ) {
         Row(
             modifier = Modifier
@@ -88,9 +93,8 @@ fun NodeTelemetryHeader(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "Live Service Diagnostics",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = "Live diagnostics",
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
@@ -180,7 +184,7 @@ fun NodeTelemetryHeader(
                         text = "Base URL: ${telemetry.llmBaseUrl.ifBlank { "Not set" }}",
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = CyberCyan
+                        color = SparkBlueBright
                     )
                     Text(
                         text = "IP: ${telemetry.tailscaleIp}",
@@ -203,9 +207,14 @@ private fun ServiceStatusCard(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(DarkBorderSubtle)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(DarkSurfaceVariant.copy(alpha = 0.7f))
+            .border(
+                1.dp,
+                if (isOpen) TerminalGreen.copy(alpha = 0.22f) else DarkBorderSubtle,
+                RoundedCornerShape(10.dp)
+            )
+            .padding(horizontal = 10.dp, vertical = 9.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -248,8 +257,9 @@ fun DiagnosticsDialog(
 ) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         androidx.compose.material3.Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(24.dp),
             color = com.example.ui.theme.DarkSurfaceElevated,
+            border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder),
             modifier = Modifier.fillMaxWidth().padding(16.dp)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
