@@ -319,7 +319,7 @@ fun HermesChatScreen(
                 }
 
                 // Live tool calls executing in real-time
-                if (liveTools.any { it.name.isNotBlank() }) {
+                if (liveTools.isNotEmpty()) {
                     item(key = "live_strip") {
                         HermesToolStrip(tools = liveTools, nodeName = node.name)
                     }
@@ -748,7 +748,11 @@ private fun HermesToolStrip(
     nodeName: String
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val visible = tools.filter { it.name.isNotBlank() }
+    // Drop streaming placeholders (OpenAI tool-delta chunks often arrive with the
+    // default name and no args) — they used to render as empty full-size cards.
+    val visible = tools.filter {
+        it.name.isNotBlank() && it.name != "tool_action" || it.arguments.isNotBlank()
+    }
     if (visible.isEmpty()) return
 
     val running = visible.count { it.status == HermesToolStatus.RUNNING }
