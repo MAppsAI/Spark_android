@@ -20,11 +20,12 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.1.0"
+        shell: bash
+        run: |
+          SDKMGR=$(ls -d "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "$ANDROID_HOME"/cmdline-tools/"$(ls "$ANDROID_HOME"/cmdline-tools | grep -E '^[0-9]' | sort -V | tail -1)"/bin/sdkmanager 2>/dev/null | head -1)
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          "$SDKMGR" "platform-tools" "platforms;android-36.1" "build-tools;36.1.0"
 
       - name: Create debug keystore
         run: |
