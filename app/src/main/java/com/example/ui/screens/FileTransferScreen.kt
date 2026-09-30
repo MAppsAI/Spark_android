@@ -96,6 +96,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.RemoteFileItem
 import com.example.data.model.TailNode
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.SparkBlue
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
@@ -253,7 +254,7 @@ fun FileTransferScreen(
                     // Native SFTP Upload Button
                     Button(
                         onClick = { sftpUploadPickerLauncher.launch("*/*") },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                        colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.height(32.dp).testTag("sftp_upload_btn")
                     ) {
@@ -355,7 +356,7 @@ fun FileTransferScreen(
                                 )
                                 Button(
                                     onClick = { viewModel.refreshFiles() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -374,7 +375,7 @@ fun FileTransferScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
                             onClick = { sftpUploadPickerLauncher.launch("*/*") },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D))
+                            colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White)
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -435,7 +436,7 @@ fun FileTransferScreen(
                         // Quick SFTP Upload
                         Button(
                             onClick = { sftpUploadPickerLauncher.launch("*/*") },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                            colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.height(32.dp)
                         ) {
@@ -630,7 +631,7 @@ fun FileTransferScreen(
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D))
+                    colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White)
                 ) {
                     Text("Create")
                 }
@@ -824,7 +825,7 @@ fun FileTransferScreen(
                                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                            colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.height(34.dp)
                         ) {

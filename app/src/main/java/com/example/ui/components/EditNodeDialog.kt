@@ -47,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.model.OsType
 import com.example.data.model.TailNode
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.SparkBlue
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.HermesGold
@@ -331,7 +332,7 @@ fun EditNodeDialog(
                             )
                             onSave(updated)
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                        colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                         modifier = Modifier.testTag("save_edit_node_btn")
                     ) {
                         Text("Save Changes", fontWeight = FontWeight.Bold)

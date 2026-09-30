@@ -936,7 +936,7 @@ fun LlmChatScreen(
                     Icon(
                         imageVector = Icons.Default.Send,
                         contentDescription = "Send",
-                        tint = if (chatInput.isBlank()) TextMuted else Color(0xFF00363D),
+                        tint = if (chatInput.isBlank()) TextMuted else Color.White,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -974,7 +974,7 @@ fun LlmChatScreen(
                             viewModel.createNewChat()
                             isHistorySheetOpen = false
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                        colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.height(34.dp).testTag("sheet_new_chat_btn")
                     ) {

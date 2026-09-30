@@ -79,6 +79,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.TailNode
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.SparkBlue
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
@@ -280,7 +281,7 @@ fun RemoteDesktopScreen(
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = CyberCyan,
-                                contentColor = Color(0xFF00363D)
+                                contentColor = Color.White
                             ),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth().height(46.dp).testTag("launch_desktop_session_btn")
@@ -426,7 +427,7 @@ fun RemoteDesktopScreen(
                                 text = if (isConnected) "Stop Stream" else "Start In-App Stream",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isConnected) Color.White else Color(0xFF00363D)
+                                color = Color.White
                             )
                         }
 
@@ -466,7 +467,7 @@ fun RemoteDesktopScreen(
                             )
                             Button(
                                 onClick = { viewModel.toggleDesktopConnection() },
-                                colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D))
+                                colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White)
                             ) {
                                 Text("Connect to $effectiveDesktopUrl", fontWeight = FontWeight.Bold)
                             }
@@ -550,7 +551,7 @@ fun RemoteDesktopScreen(
                                         )
                                         Button(
                                             onClick = { activeTab = 0 },
-                                            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D))
+                                            colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White)
                                         ) {
                                             Text("Switch to 1-Tap RDP/VNC Client", fontWeight = FontWeight.Bold)
                                         }
@@ -736,7 +737,7 @@ private fun DesktopSettingsDialog(
                             val port = portText.toIntOrNull() ?: 3389
                             onSave(port, selectedType, customUrl)
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D))
+                        colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White)
                     ) {
                         Text("Save Changes")
                     }

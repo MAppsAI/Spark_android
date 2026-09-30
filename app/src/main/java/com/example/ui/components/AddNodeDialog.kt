@@ -355,7 +355,7 @@ fun AddNodeDialog(
                                 tags
                             )
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                        colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                         modifier = Modifier.testTag("save_node_btn")
                     ) {
                         Text("Connect Computer", fontWeight = FontWeight.Bold)

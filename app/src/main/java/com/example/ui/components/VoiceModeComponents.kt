@@ -71,6 +71,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +83,9 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.DiscoveredLlmModel
 import com.example.data.model.TailNode
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.SparkBlue
+import com.example.ui.theme.SparkBlueBright
+import com.example.ui.theme.SparkBlueDeep
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
@@ -652,14 +656,18 @@ fun VoiceModeDialog(
                             .size(72.dp)
                             .clip(CircleShape)
                             .background(
-                                if (voiceState == VoiceState.LISTENING) TerminalRed else CyberCyan
+                                if (voiceState == VoiceState.LISTENING)
+                                    SolidColor(TerminalRed)
+                                else androidx.compose.ui.graphics.Brush.linearGradient(
+                                    listOf(SparkBlueBright, SparkBlueDeep)
+                                )
                             )
                             .testTag("voice_mic_toggle_btn")
                     ) {
                         Icon(
                             imageVector = if (voiceState == VoiceState.LISTENING) Icons.Default.MicOff else Icons.Default.Mic,
                             contentDescription = "Mic",
-                            tint = if (voiceState == VoiceState.LISTENING) Color.White else Color(0xFF00363D),
+                            tint = Color.White,
                             modifier = Modifier.size(34.dp)
                         )
                     }
@@ -842,7 +850,7 @@ fun VoiceModelsSheet(
                                 } else {
                                     Button(
                                         onClick = { onDownloadModel(model.id) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D)),
+                                        colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White),
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.height(32.dp).testTag("download_${model.id}")
                                     ) {
