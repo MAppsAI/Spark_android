@@ -231,7 +231,12 @@ class VoiceEngineManager(
         activeDownloadJob = scope.launch(Dispatchers.IO) {
             val archive = archiveFor(modelId)
             try {
-                val request = Request.Builder().url(model.downloadUrl).build()
+                val request = Request.Builder()
+                    .url(model.downloadUrl)
+                    // GitHub's CDN 404s requests without a browser-like UA
+                    // (OkHttp sends none by default).
+                    .header("User-Agent", "Mozilla/5.0 (Android) Spark/1.0")
+                    .build()
                 httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) error("HTTP ${response.code}")
                     val body = response.body ?: error("Empty body")
