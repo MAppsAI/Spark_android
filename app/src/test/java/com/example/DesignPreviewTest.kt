@@ -34,7 +34,7 @@ import org.robolectric.annotation.GraphicsMode
  * and records PNGs via Roborazzi (Robolectric NATIVE). Not wired to navigation.
  */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [36])
 class DesignPreviewTest {
 

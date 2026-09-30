@@ -88,6 +88,9 @@ import com.example.data.model.TailNode
 import com.example.network.TermuxLaunchResult
 import com.example.ui.components.QuickKeyBar
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.SparkBlue
+import com.example.ui.theme.SparkBlueBright
+import com.example.ui.theme.SparkBlueDeep
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
@@ -211,9 +214,9 @@ fun TerminalScreen(
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = CyberCyan),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 2.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = SparkBlue),
+                    shape = RoundedCornerShape(999.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                     modifier = Modifier.height(26.dp).testTag("open_in_termux_btn")
                 ) {
                     Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(13.dp))
@@ -273,7 +276,7 @@ fun TerminalScreen(
                                 text = {
                                     Column {
                                         Text(preset.title, fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
-                                        Text(preset.command, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = CyberCyan)
+                                        Text(preset.command, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = SparkBlue)
                                     }
                                 },
                                 onClick = {
@@ -355,7 +358,7 @@ fun TerminalScreen(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberCyan,
+                    color = SparkBlue,
                     modifier = Modifier
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -372,12 +375,12 @@ fun TerminalScreen(
                     modifier = Modifier
                         .weight(1f)
                         .defaultMinSize(minHeight = 42.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(DarkCanvas)
                         .border(
                             width = 1.dp,
-                            color = if (isInputFocused) CyberCyan else DarkBorder,
-                            shape = RoundedCornerShape(8.dp)
+                            color = if (isInputFocused) SparkBlue.copy(alpha = 0.6f) else DarkBorder,
+                            shape = RoundedCornerShape(12.dp)
                         )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -402,7 +405,7 @@ fun TerminalScreen(
                             fontSize = 13.sp,
                             color = TextPrimary
                         ),
-                        cursorBrush = SolidColor(CyberCyan),
+                        cursorBrush = SolidColor(SparkBlue),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             imeAction = ImeAction.Send,
@@ -453,15 +456,18 @@ fun TerminalScreen(
                         .size(38.dp)
                         .clip(CircleShape)
                         .background(
-                            if (!isRunning && terminalInput.isNotBlank()) CyberCyan
-                            else DarkSurfaceVariant
+                            if (!isRunning && terminalInput.isNotBlank())
+                                androidx.compose.ui.graphics.Brush.linearGradient(
+                                    listOf(SparkBlueBright, SparkBlueDeep)
+                                )
+                            else SolidColor(DarkSurfaceVariant)
                         )
                         .testTag("terminal_send_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = "Run",
-                        tint = if (isRunning || terminalInput.isBlank()) TextMuted else Color(0xFF00363D),
+                        tint = if (isRunning || terminalInput.isBlank()) TextMuted else Color.White,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -491,7 +497,7 @@ fun TerminalScreen(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF030712))
+                    .background(DarkCanvas)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -514,7 +520,7 @@ fun TerminalScreen(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberCyan,
+                                color = SparkBlueBright,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -523,8 +529,8 @@ fun TerminalScreen(
                             text = line.text,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            color = if (line.isError) TerminalRed else Color(0xFFD1D5DB),
-                            lineHeight = 16.sp,
+                            color = if (line.isError) TerminalRed else TextSecondary,
+                            lineHeight = 17.sp,
                             modifier = Modifier.padding(bottom = 3.dp)
                         )
                     }
@@ -544,7 +550,7 @@ fun TerminalScreen(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberCyan.copy(alpha = 0.85f)
+                                color = SparkBlueBright.copy(alpha = 0.8f)
                             )
                         }
                     }
@@ -607,7 +613,7 @@ fun TerminalScreen(
                             color = CyberCyan,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFF030712))
+                                .background(DarkCanvas)
                                 .padding(8.dp)
                         )
                     }
@@ -625,7 +631,7 @@ fun TerminalScreen(
                         context.startActivity(result.intent)
                         termuxPromptResult = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D))
+                    colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White)
                 ) {
                     Text("Download Termux")
                 }
@@ -686,7 +692,7 @@ fun TerminalScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = { viewModel.saveSshPassword(passwordInput) },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color(0xFF00363D))
+                            colors = ButtonDefaults.buttonColors(containerColor = SparkBlue, contentColor = Color.White)
                         ) {
                             Text("Save & Connect")
                         }
