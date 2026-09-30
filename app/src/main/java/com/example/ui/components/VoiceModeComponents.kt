@@ -5,6 +5,8 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -303,84 +305,7 @@ fun VoiceModeDialog(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
                 ) {
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // Compact Pulsating Ambient Sound Orb
-                    Box(
-                        modifier = Modifier
-                            .size(110.dp)
-                            .scale(reactiveScale),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // Outer glowing aura
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.radialGradient(
-                                        colors = when (voiceState) {
-                                            VoiceState.LISTENING -> listOf(CyberCyan.copy(alpha = 0.5f), Color.Transparent)
-                                            VoiceState.SPEAKING -> listOf(TerminalGreen.copy(alpha = 0.5f), Color.Transparent)
-                                            VoiceState.THINKING -> listOf(TerminalAmber.copy(alpha = 0.5f), Color.Transparent)
-                                            VoiceState.IDLE -> listOf(CyberCyan.copy(alpha = 0.2f), Color.Transparent)
-                                        }
-                                    )
-                                )
-                        )
-
-                        // Core Orb
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = when (voiceState) {
-                                            VoiceState.LISTENING -> listOf(CyberCyan, Color(0xFF0284C7))
-                                            VoiceState.SPEAKING -> listOf(TerminalGreen, Color(0xFF059669))
-                                            VoiceState.THINKING -> listOf(TerminalAmber, Color(0xFFD97706))
-                                            VoiceState.IDLE -> listOf(Color(0xFF1E293B), Color(0xFF0F172A))
-                                        }
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = when (voiceState) {
-                                    VoiceState.LISTENING -> Icons.Default.GraphicEq
-                                    VoiceState.SPEAKING -> Icons.Default.VolumeUp
-                                    VoiceState.THINKING -> Icons.Default.Psychology
-                                    VoiceState.IDLE -> Icons.Default.Mic
-                                },
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Status Indicator
-                    Text(
-                        text = when (voiceState) {
-                            VoiceState.LISTENING -> "Listening to your voice..."
-                            VoiceState.THINKING -> "Thinking with $selectedModel..."
-                            VoiceState.SPEAKING -> "Speaking aloud with TTS..."
-                            VoiceState.IDLE -> "Tap mic below to speak"
-                        },
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = when (voiceState) {
-                            VoiceState.LISTENING -> CyberCyan
-                            VoiceState.SPEAKING -> TerminalGreen
-                            VoiceState.THINKING -> TerminalAmber
-                            VoiceState.IDLE -> TextMuted
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     // ==========================================
                     // PANEL 1: LIVE STT MODEL TRANSCRIPTION CARD
@@ -627,70 +552,202 @@ fun VoiceModeDialog(
                     }
                 }
 
-                // Bottom Controls: Mic Toggle, Stop Audio, Done
-                Row(
+                // ============================================
+                // HERO: tappable orb at the bottom + voice particles
+                // (raised clear of the Android nav bar by design)
+                // ============================================
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(208.dp),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    // Interrupt / Stop speaking button
-                    if (voiceState == VoiceState.SPEAKING) {
-                        IconButton(
-                            onClick = onStopSpeaking,
-                            modifier = Modifier
-                                .size(50.dp)
-                                .clip(CircleShape)
-                                .background(DarkSurfaceElevated)
-                        ) {
-                            Icon(Icons.Default.Stop, contentDescription = "Stop", tint = TerminalRed, modifier = Modifier.size(24.dp))
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.size(50.dp))
-                    }
+                    // Particle flow: rises while you speak, falls while Spark speaks
+                    VoiceParticleField(
+                        active = voiceState == VoiceState.LISTENING || voiceState == VoiceState.SPEAKING,
+                        level = rmsDecibels,
+                        up = voiceState == VoiceState.LISTENING,
+                        color = if (voiceState == VoiceState.SPEAKING) TerminalGreen else CyberCyan,
+                        modifier = Modifier.matchParentSize()
+                    )
 
-                    // Main Push-to-Talk / Listening Toggle
-                    IconButton(
-                        onClick = {
-                            if (voiceState == VoiceState.LISTENING) {
-                                onStopListening()
-                            } else {
-                                onStartListening()
-                            }
-                        },
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (voiceState == VoiceState.LISTENING)
-                                    SolidColor(TerminalRed)
-                                else androidx.compose.ui.graphics.Brush.linearGradient(
-                                    listOf(SparkBlueBright, SparkBlueDeep)
+                            .fillMaxWidth()
+                            .padding(bottom = 26.dp)
+                    ) {
+                        // The orb IS the mic button
+                        Box(
+                            modifier = Modifier
+                                .size(116.dp)
+                                .scale(reactiveScale)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = when (voiceState) {
+                                            VoiceState.LISTENING -> listOf(CyberCyan.copy(alpha = 0.45f), Color.Transparent)
+                                            VoiceState.SPEAKING -> listOf(TerminalGreen.copy(alpha = 0.45f), Color.Transparent)
+                                            VoiceState.THINKING -> listOf(TerminalAmber.copy(alpha = 0.45f), Color.Transparent)
+                                            VoiceState.IDLE -> listOf(SparkBlue.copy(alpha = 0.30f), Color.Transparent)
+                                        }
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(if (voiceState == VoiceState.LISTENING) 88.dp else 78.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = when (voiceState) {
+                                                VoiceState.LISTENING -> listOf(CyberCyan, Color(0xFF0284C7))
+                                                VoiceState.SPEAKING -> listOf(TerminalGreen, Color(0xFF059669))
+                                                VoiceState.THINKING -> listOf(TerminalAmber, Color(0xFFD97706))
+                                                VoiceState.IDLE -> listOf(SparkBlueBright, SparkBlueDeep)
+                                            }
+                                        )
+                                    )
+                                    .border(
+                                        1.dp,
+                                        Color.White.copy(alpha = 0.18f),
+                                        CircleShape
+                                    )
+                                    .clickable {
+                                        when (voiceState) {
+                                            VoiceState.LISTENING -> onStopListening()
+                                            VoiceState.SPEAKING -> onStopSpeaking()
+                                            else -> onStartListening()
+                                        }
+                                    }
+                                    .testTag("voice_mic_toggle_btn"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = when (voiceState) {
+                                        VoiceState.LISTENING -> Icons.Default.GraphicEq
+                                        VoiceState.SPEAKING -> Icons.Default.VolumeUp
+                                        VoiceState.THINKING -> Icons.Default.Psychology
+                                        VoiceState.IDLE -> Icons.Default.Mic
+                                    },
+                                    contentDescription = "Mic",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(38.dp)
                                 )
-                            )
-                            .testTag("voice_mic_toggle_btn")
-                    ) {
-                        Icon(
-                            imageVector = if (voiceState == VoiceState.LISTENING) Icons.Default.MicOff else Icons.Default.Mic,
-                            contentDescription = "Mic",
-                            tint = Color.White,
-                            modifier = Modifier.size(34.dp)
-                        )
-                    }
-
-                    // Done / Exit button
-                    TextButton(
-                        onClick = {
-                            onStopSpeaking()
-                            onStopListening()
-                            onDismiss()
+                            }
                         }
-                    ) {
-                        Text("Done", color = TextSecondary, fontSize = 13.sp)
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Status label
+                        Text(
+                            text = when (voiceState) {
+                                VoiceState.LISTENING -> "Listening — tap to stop"
+                                VoiceState.THINKING -> "Thinking with $selectedModel..."
+                                VoiceState.SPEAKING -> "Tap orb to interrupt"
+                                VoiceState.IDLE -> "Tap the orb to speak"
+                            },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = when (voiceState) {
+                                VoiceState.LISTENING -> CyberCyan
+                                VoiceState.SPEAKING -> TerminalGreen
+                                VoiceState.THINKING -> TerminalAmber
+                                VoiceState.IDLE -> TextMuted
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(horizontalArrangement = Arrangement.Center) {
+                            if (voiceState == VoiceState.SPEAKING) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(TerminalRed.copy(alpha = 0.15f))
+                                        .border(1.dp, TerminalRed.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                                        .clickable { onStopSpeaking() }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Stop, contentDescription = null, tint = TerminalRed, modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Stop", fontSize = 11.sp, color = TerminalRed, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(DarkSurfaceElevated)
+                                    .border(1.dp, DarkBorder, RoundedCornerShape(20.dp))
+                                    .clickable {
+                                        onStopSpeaking()
+                                        onStopListening()
+                                        onDismiss()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Text("Done", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Voice-reactive particle flow drawn behind the hero orb.
+ * Particles rise while listening and fall (drain) while Spark speaks.
+ */
+@Composable
+private fun VoiceParticleField(
+    active: Boolean,
+    level: Float,
+    up: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "voice_particles")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "particle_t"
+    )
+    val particles = remember {
+        List(30) { i ->
+            val rnd = java.util.Random(i * 97L + 13)
+            Triple(rnd.nextFloat(), 0.35f + rnd.nextFloat() * 0.65f, 0.35f + rnd.nextFloat() * 0.65f)
+        }
+    }
+    val amp = (level / 10f).coerceIn(0f, 1f)
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        if (!active) return@Canvas
+        val h = size.height
+        val w = size.width
+        particles.forEach { (xFrac, speedMul, sizeMul) ->
+            val prog = (progress * speedMul + xFrac) % 1f
+            val y = if (up) h * (1f - prog) else h * prog
+            val edge = 1f - kotlin.math.abs(prog - 0.5f) * 2f
+            val alpha = edge * (0.22f + amp * 0.78f)
+            val r = sizeMul * (3.dp.toPx() + amp * 10.dp.toPx())
+            val cx = w * xFrac
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colorStops = arrayOf(0f to color.copy(alpha = alpha), 1f to Color.Transparent),
+                    center = Offset(cx, y),
+                    radius = r * 2.2f
+                ),
+                radius = r * 2.2f,
+                center = Offset(cx, y)
+            )
         }
     }
 }
