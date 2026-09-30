@@ -23,9 +23,12 @@ jobs:
       - name: Install SDK packages
         shell: bash
         run: |
-          SDKMGR=$(ls -d "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "$ANDROID_HOME"/cmdline-tools/"$(ls "$ANDROID_HOME"/cmdline-tools | grep -E '^[0-9]' | sort -V | tail -1)"/bin/sdkmanager 2>/dev/null | head -1)
-          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          set +e
+          SDKMGR=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -1)
+          echo "Using sdkmanager: $SDKMGR"
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1
           "$SDKMGR" "platform-tools" "platforms;android-36.1" "build-tools;36.1.0"
+          [ -x "$ANDROID_HOME/build-tools/36.1.0/aapt2" ] || { echo "build-tools install failed"; exit 1; }
 
       - name: Create debug keystore
         run: |
