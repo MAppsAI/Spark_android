@@ -158,21 +158,21 @@ fun SparkEmptyState(
   ) {
     Box(
       modifier = Modifier
-        .size(88.dp)
+        .size(96.dp)
         .clip(CircleShape)
         .background(
           Brush.linearGradient(
-            listOf(accent.copy(alpha = 0.16f), accent.copy(alpha = 0.04f)),
+            listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.08f)),
           ),
         )
-        .border(1.dp, accent.copy(alpha = 0.22f), CircleShape),
+        .border(1.dp, accent.copy(alpha = 0.40f), CircleShape),
       contentAlignment = Alignment.Center,
     ) {
       Icon(
         imageVector = icon,
         contentDescription = null,
         tint = accent,
-        modifier = Modifier.size(38.dp),
+        modifier = Modifier.size(46.dp),
       )
     }
     Spacer(modifier = Modifier.height(18.dp))

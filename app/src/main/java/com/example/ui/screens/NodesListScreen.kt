@@ -223,13 +223,37 @@ fun NodesListScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = 64.dp),
-                    contentAlignment = Alignment.TopCenter
+                        .padding(bottom = 48.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     SparkEmptyState(
                         title = "No computers yet",
                         subtitle = "Add a machine from your Tailscale network to get terminal, files, LLM chat, Hermes and remote desktop in one place.",
                         icon = Icons.Outlined.Hub,
+                        action = {
+                            Row(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(DarkSurfaceVariant.copy(alpha = 0.8f))
+                                    .border(1.dp, DarkBorder, CircleShape)
+                                    .clickable { viewModel.openAddNodeDialog() }
+                                    .padding(horizontal = 18.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = SparkBlue,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    text = "Add your first computer",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = SparkBlue,
+                                )
+                            }
+                        },
                     )
                 }
             } else {
