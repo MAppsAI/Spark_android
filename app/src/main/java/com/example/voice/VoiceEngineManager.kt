@@ -118,11 +118,11 @@ class VoiceEngineManager(
             id = "tts_kokoro",
             name = "Kokoro Neural Voice",
             type = VoiceModelType.TTS,
-            tier = "HD (~147MB)",
-            sizeBytes = 147_031_220L,
-            sizeFormatted = "147 MB",
+            tier = "HD (~126MB)",
+            sizeBytes = 132_303_094L,
+            sizeFormatted = "126 MB",
             description = "Real Kokoro-82M neural voice via sherpa-onnx. Natural prosody, fully offline.",
-            downloadUrl = "https://github.com/k2fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2"
+            downloadUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2"
         )
     )
 
@@ -233,8 +233,6 @@ class VoiceEngineManager(
             try {
                 val request = Request.Builder()
                     .url(model.downloadUrl)
-                    // GitHub's CDN 404s requests without a browser-like UA
-                    // (OkHttp sends none by default).
                     .header("User-Agent", "Mozilla/5.0 (Android) Spark/1.0")
                     .build()
                 httpClient.newCall(request).execute().use { response ->
