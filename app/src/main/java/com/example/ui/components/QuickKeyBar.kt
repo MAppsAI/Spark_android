@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +30,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.DarkSurfaceVariant
+import com.example.ui.theme.SparkBlue
+import com.example.ui.theme.SparkBlueBright
+import com.example.ui.theme.TextSecondary
 
 @Composable
 fun QuickKeyBar(
@@ -53,8 +58,9 @@ fun QuickKeyBar(
         if (onShowKeyboard != null) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(CyberCyan.copy(alpha = 0.2f))
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(SparkBlue.copy(alpha = 0.16f))
+                    .border(1.dp, SparkBlue.copy(alpha = 0.35f), RoundedCornerShape(7.dp))
                     .clickable { onShowKeyboard() }
                     .padding(horizontal = 8.dp, vertical = 3.dp)
                     .testTag("key_btn_show_keyboard"),
@@ -64,13 +70,13 @@ fun QuickKeyBar(
                     Icon(
                         imageVector = Icons.Default.Keyboard,
                         contentDescription = "Show Keyboard",
-                        tint = CyberCyan,
+                        tint = SparkBlue,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "KBD",
-                        color = CyberCyan,
+                        color = SparkBlueBright,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold
@@ -82,16 +88,21 @@ fun QuickKeyBar(
         keys.forEach { key ->
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.surface)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(DarkSurfaceElevated)
+                    .border(
+                        1.dp,
+                        com.example.ui.theme.DarkBorderSubtle,
+                        RoundedCornerShape(7.dp)
+                    )
                     .clickable { onKeyClick(key) }
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .padding(horizontal = 9.dp, vertical = 3.dp)
                     .testTag("key_btn_$key"),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = key,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = TextSecondary,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold

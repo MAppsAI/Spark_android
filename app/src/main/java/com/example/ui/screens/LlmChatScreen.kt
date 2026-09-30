@@ -112,6 +112,9 @@ import com.example.network.SearchSnippet
 import com.example.ui.components.VoiceModeDialog
 import com.example.ui.components.VoiceModelsSheet
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.SparkBlue
+import com.example.ui.theme.SparkBlueBright
+import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
@@ -1156,7 +1159,7 @@ private fun ChatMessageBubble(
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Medium,
-                    color = CyberCyan
+                    color = SparkBlueBright
                 )
                 message.inferenceStats?.let { stats ->
                     Text(
@@ -1169,22 +1172,27 @@ private fun ChatMessageBubble(
             }
         }
 
+        val bubbleShape = RoundedCornerShape(
+            topStart = if (isUser) 18.dp else 4.dp,
+            topEnd = if (isUser) 4.dp else 18.dp,
+            bottomStart = 18.dp,
+            bottomEnd = 18.dp
+        )
         Surface(
-            shape = RoundedCornerShape(
-                topStart = 14.dp,
-                topEnd = 14.dp,
-                bottomStart = if (isUser) 14.dp else 2.dp,
-                bottomEnd = if (isUser) 2.dp else 14.dp
+            shape = bubbleShape,
+            color = if (isUser) SparkBlue.copy(alpha = 0.14f) else DarkSurfaceElevated,
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (isUser) SparkBlue.copy(alpha = 0.30f) else DarkBorder
             ),
-            color = if (isUser) DarkSurfaceVariant else DarkSurfaceElevated,
             modifier = Modifier.widthIn(max = 330.dp)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 Text(
                     text = message.content,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = TextPrimary,
-                    lineHeight = 18.sp
+                    lineHeight = 21.sp
                 )
 
                 // Copy button bar

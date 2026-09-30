@@ -640,24 +640,20 @@ private fun HermesMessageBubble(
         }
 
         // Message Content Box
+        val bubbleShape = RoundedCornerShape(
+            topStart = if (isUser) 18.dp else 4.dp,
+            topEnd = if (isUser) 4.dp else 18.dp,
+            bottomStart = 18.dp,
+            bottomEnd = 18.dp
+        )
         Surface(
-            shape = RoundedCornerShape(
-                topStart = 12.dp,
-                topEnd = 12.dp,
-                bottomStart = if (isUser) 12.dp else 2.dp,
-                bottomEnd = if (isUser) 2.dp else 12.dp
-            ),
+            shape = bubbleShape,
             color = if (isUser) DarkSurfaceElevated else HermesSurfaceGold,
             modifier = Modifier
                 .border(
                     width = 1.dp,
                     color = if (isUser) DarkBorder else HermesBorderGold,
-                    shape = RoundedCornerShape(
-                        topStart = 12.dp,
-                        topEnd = 12.dp,
-                        bottomStart = if (isUser) 12.dp else 2.dp,
-                        bottomEnd = if (isUser) 2.dp else 12.dp
-                    )
+                    shape = bubbleShape
                 )
                 .clickable {
                     clipboard.setText(AnnotatedString(message.content))

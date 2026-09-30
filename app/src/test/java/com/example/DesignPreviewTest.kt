@@ -2,9 +2,16 @@ package com.example
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Hub
+import com.example.ui.components.IconTile
+import com.example.ui.components.SparkEmptyState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -93,5 +100,128 @@ class DesignPreviewTest {
     }
     composeTestRule.waitForIdle()
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/design_nodes_list.png")
+  }
+
+  @Test
+  fun chat_bubbles_preview() {
+    composeTestRule.setContent {
+      MyApplicationTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+          Column(
+            modifier = Modifier.fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+          ) {
+            ChatMessageBubblePreview(
+              content = "Hey! I checked the GPU temps on Rig — all nominal at 54C.",
+              isUser = false,
+              meta = "llama3.2:latest • Rig (LINUX) • 21 tok/s",
+            )
+            ChatMessageBubblePreview(content = "Run nvidia-smi and paste the output.", isUser = true, meta = null)
+            ChatMessageBubblePreview(
+              content = "Here you go — four A100s idle, 10GB used each. Want me to start the fine-tune job?",
+              isUser = false,
+              meta = "hermes-agent • Rig",
+              gold = true,
+            )
+          }
+        }
+      }
+    }
+    composeTestRule.waitForIdle()
+    composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/design_chat.png")
+  }
+
+  @Composable
+  private fun ChatMessageBubblePreview(content: String, isUser: Boolean, meta: String?, gold: Boolean = false) {
+    val align = if (isUser) androidx.compose.ui.Alignment.End else androidx.compose.ui.Alignment.Start
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = align) {
+      if (!isUser && meta != null) {
+        Text(
+          text = meta,
+          fontSize = 10.sp,
+          fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+          fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+          color = if (gold) com.example.ui.theme.HermesGold else com.example.ui.theme.SparkBlueBright,
+          modifier = Modifier.padding(bottom = 3.dp, start = 4.dp),
+        )
+      }
+      val shape = androidx.compose.foundation.shape.RoundedCornerShape(
+        topStart = if (isUser) 18.dp else 4.dp,
+        topEnd = if (isUser) 4.dp else 18.dp,
+        bottomStart = 18.dp,
+        bottomEnd = 18.dp,
+      )
+      Surface(
+        shape = shape,
+        color = when {
+          isUser -> com.example.ui.theme.SparkBlue.copy(alpha = 0.14f)
+          gold -> com.example.ui.theme.HermesSurfaceGold
+          else -> MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        border = androidx.compose.foundation.BorderStroke(
+          1.dp,
+          when {
+            isUser -> com.example.ui.theme.SparkBlue.copy(alpha = 0.30f)
+            gold -> com.example.ui.theme.HermesBorderGold
+            else -> com.example.ui.theme.DarkBorder
+          },
+        ),
+        modifier = Modifier.widthIn(max = 330.dp),
+      ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+          Text(
+            text = content,
+            style = MaterialTheme.typography.bodyMedium,
+            color = com.example.ui.theme.TextPrimary,
+            lineHeight = 21.sp,
+          )
+        }
+      }
+    }
+  }
+
+  @Test
+  fun hero_and_empty_preview() {
+    composeTestRule.setContent {
+      MyApplicationTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+          Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+          ) {
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(top = 16.dp))
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+              IconTile(
+                icon = Icons.Outlined.Hub,
+                tint = com.example.ui.theme.SparkBlue,
+                size = 44.dp,
+                iconSize = 24.dp,
+                corner = 14,
+              )
+              androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(start = 14.dp))
+              Column {
+                Text(
+                  "Spark",
+                  style = MaterialTheme.typography.headlineMedium,
+                  color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                  "Your Tailscale mesh",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = com.example.ui.theme.TextMuted,
+                )
+              }
+            }
+            SparkEmptyState(
+              title = "No computers yet",
+              subtitle = "Add a machine from your Tailscale network to get terminal, files, LLM chat, Hermes and remote desktop in one place.",
+              icon = Icons.Outlined.Hub,
+            )
+          }
+        }
+      }
+    }
+    composeTestRule.waitForIdle()
+    composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/design_empty_state.png")
   }
 }
