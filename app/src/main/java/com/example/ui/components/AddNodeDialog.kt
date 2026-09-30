@@ -47,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.model.OsType
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.SparkBlue
 import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -86,8 +87,9 @@ fun AddNodeDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(24.dp),
             color = DarkSurfaceElevated,
+            border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp)
@@ -104,16 +106,16 @@ fun AddNodeDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Computer,
-                            contentDescription = null,
-                            tint = CyberCyan
+                        IconTile(
+                            icon = Icons.Default.Computer,
+                            tint = SparkBlue,
+                            size = 36.dp,
+                            iconSize = 19.dp
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "Add Tailscale Computer",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge,
                             color = TextPrimary
                         )
                     }

@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Edit
@@ -34,6 +34,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -64,6 +65,7 @@ import com.example.ui.components.DiagnosticsDialog
 import com.example.ui.components.EditNodeDialog
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.SparkBlue
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkSurfaceElevated
@@ -112,8 +114,7 @@ fun NodeDetailScreen(
                         ) {
                             Text(
                                 text = node.name,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = TextPrimary,
                                 maxLines = 1
                             )
@@ -183,7 +184,7 @@ fun NodeDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkSurface
+                    containerColor = DarkSurface.copy(alpha = 0.9f)
                 )
             )
         },
@@ -191,43 +192,44 @@ fun NodeDetailScreen(
             // Auto-hide bottom NavigationBar when software keyboard is visible so typing has full screen!
             if (!isKeyboardVisible) {
                 NavigationBar(
-                    containerColor = DarkSurface,
-                    tonalElevation = 2.dp
+                    containerColor = DarkSurface.copy(alpha = 0.97f),
+                    tonalElevation = 0.dp
                 ) {
                     val navItems = listOf(
                         Triple(0, "Terminal", Icons.Default.Terminal),
                         Triple(1, "Files", Icons.Default.Folder),
-                        Triple(2, "LLM Chat", Icons.Default.Chat),
+                        Triple(2, "LLM Chat", Icons.AutoMirrored.Filled.Chat),
                         Triple(3, "Hermes", Icons.Default.SmartToy),
                         Triple(4, "Desktop", Icons.Default.DesktopWindows)
                     )
 
                     navItems.forEach { (index, label, icon) ->
                         val isSelected = selectedTab == index
-                        val activeColor = if (label == "Hermes") HermesGold else CyberCyan
+                        val activeColor = if (label == "Hermes") HermesGold else SparkBlue
                         NavigationBarItem(
                             selected = isSelected,
                             onClick = { viewModel.setSelectedTab(index) },
+                            alwaysShowLabel = true,
                             icon = {
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = label,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(21.dp)
                                 )
                             },
                             label = {
                                 Text(
                                     text = label,
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = activeColor,
                                 selectedTextColor = activeColor,
-                                unselectedIconColor = TextSecondary,
+                                unselectedIconColor = TextMuted,
                                 unselectedTextColor = TextMuted,
-                                indicatorColor = activeColor.copy(alpha = 0.15f)
+                                indicatorColor = activeColor.copy(alpha = 0.14f)
                             ),
                             modifier = Modifier.testTag("nav_tab_$label")
                         )
