@@ -17,13 +17,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import java.io.File
+import java.io.BufferedInputStream
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipInputStream
 
 enum class VoiceModelType { STT, TTS }
 
@@ -31,7 +35,7 @@ data class VoiceModelInfo(
     val id: String,
     val name: String,
     val type: VoiceModelType,
-    val tier: String, // "Tiny (~40MB)", "Medium (~185MB)", "Built-in (0MB)"
+    val tier: String,
     val sizeBytes: Long,
     val sizeFormatted: String,
     val description: String,
@@ -39,7 +43,8 @@ data class VoiceModelInfo(
     val isDownloaded: Boolean = false,
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
-    val isSelected: Boolean = false
+    val isSelected: Boolean = false,
+    val loadError: String = ""
 )
 
 enum class VoiceState {
@@ -55,17 +60,18 @@ class VoiceEngineManager(
 ) : TextToSpeech.OnInitListener {
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS) // model downloads: no read timeout
+        .followRedirects(true)
         .build()
 
     private val modelsDir = File(context.filesDir, "voice_models").apply {
         if (!exists()) mkdirs()
     }
+    private val prefs = context.getSharedPreferences("voice_engine", Context.MODE_PRIVATE)
 
-    // Model Catalog
+    // Model catalog — real, verified URLs (sherpa-onnx tts-models release + Vosk).
     private val initialModels = listOf(
-        // STT Models
         VoiceModelInfo(
             id = "stt_system",
             name = "Android On-Device Recognizer",
@@ -75,34 +81,28 @@ class VoiceEngineManager(
             sizeFormatted = "0 MB",
             description = "Native Android offline speech recognizer. Zero download required.",
             downloadUrl = "",
-            isDownloaded = true,
-            isSelected = true
+            isDownloaded = true
         ),
         VoiceModelInfo(
-            id = "stt_tiny",
-            name = "Vosk / Whisper Mobile Tiny EN",
+            id = "stt_vosk_tiny",
+            name = "Vosk Small EN",
             type = VoiceModelType.STT,
-            tier = "Tiny (~42MB)",
-            sizeBytes = 44_040_192L,
-            sizeFormatted = "42 MB",
-            description = "Ultra-fast offline acoustic model (~42MB). Real-time speech transcription with minimal RAM usage.",
-            downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-            isDownloaded = false,
-            isSelected = false
+            tier = "Tiny (~41MB)",
+            sizeBytes = 41_205_931L,
+            sizeFormatted = "41 MB",
+            description = "Real offline Vosk acoustic model. Near real-time dictation, no network needed.",
+            downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
         ),
         VoiceModelInfo(
-            id = "stt_medium",
-            name = "Vosk / Whisper Base-Medium EN",
+            id = "stt_vosk_medium",
+            name = "Vosk Large EN (LGraph)",
             type = VoiceModelType.STT,
-            tier = "Medium (~185MB)",
-            sizeBytes = 194_000_000L,
-            sizeFormatted = "185 MB",
-            description = "High-accuracy on-device speech model (<300MB). Robust vocabulary and punctuation.",
-            downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip",
-            isDownloaded = false,
-            isSelected = false
+            tier = "Medium (~130MB)",
+            sizeBytes = 130_557_655L,
+            sizeFormatted = "130 MB",
+            description = "High-accuracy on-device Vosk model. Better grammar and vocabulary.",
+            downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip"
         ),
-        // TTS Models
         VoiceModelInfo(
             id = "tts_system",
             name = "System Neural TTS Voice",
@@ -110,34 +110,19 @@ class VoiceEngineManager(
             tier = "Built-in (0MB)",
             sizeBytes = 0L,
             sizeFormatted = "0 MB",
-            description = "Native on-device text-to-speech with natural inflection and zero storage footprint.",
+            description = "Native on-device text-to-speech provided by Android.",
             downloadUrl = "",
-            isDownloaded = true,
-            isSelected = true
+            isDownloaded = true
         ),
         VoiceModelInfo(
-            id = "tts_tiny",
-            name = "Piper Natural Voice Tiny",
+            id = "tts_kokoro",
+            name = "Kokoro Neural Voice",
             type = VoiceModelType.TTS,
-            tier = "Tiny (~28MB)",
-            sizeBytes = 29_360_128L,
-            sizeFormatted = "28 MB",
-            description = "Compact offline neural voice (~28MB). Fast synthesis designed for mobile speech assistants.",
-            downloadUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/low/en_US-lessac-low.onnx",
-            isDownloaded = false,
-            isSelected = false
-        ),
-        VoiceModelInfo(
-            id = "tts_medium",
-            name = "Piper Studio High-Fidelity Voice",
-            type = VoiceModelType.TTS,
-            tier = "Medium (~120MB)",
-            sizeBytes = 125_829_120L,
-            sizeFormatted = "120 MB",
-            description = "Studio grade on-device neural voice (<300MB). Expressive cadence and pitch variation.",
-            downloadUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
-            isDownloaded = false,
-            isSelected = false
+            tier = "HD (~147MB)",
+            sizeBytes = 147_031_220L,
+            sizeFormatted = "147 MB",
+            description = "Real Kokoro-82M neural voice via sherpa-onnx. Natural prosody, fully offline.",
+            downloadUrl = "https://github.com/k2fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2"
         )
     )
 
@@ -168,23 +153,247 @@ class VoiceEngineManager(
     private var activeDownloadJob: Job? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Real engines
+    private val kokoroEngine = KokoroTtsEngine()
+    private val voskEngine = VoskSttEngine()
+    private var kokoroCandidateDir: String = ""
+
     init {
-        checkDownloadedModelsOnDisk()
+        refreshDownloadedStates()
+        restoreSelections()
         initializeTts()
+        // Lazy-load whichever real engines back the current selection.
+        selectedTtsModel?.takeIf { it.id == "tts_kokoro" && it.isDownloaded }?.let { ensureKokoroLoaded() }
+        selectedSttModel?.takeIf { it.id.startsWith("stt_vosk") && it.isDownloaded }?.let { ensureVoskLoaded(it.id) }
     }
 
-    private fun checkDownloadedModelsOnDisk() {
+    // ───────────────────────── model files ─────────────────────────
+
+    private fun modelDirFor(id: String) = File(modelsDir, id)
+    private fun archiveFor(id: String) = File(modelsDir, "$id.download")
+
+    private fun isExtracted(id: String): Boolean {
+        val dir = modelDirFor(id)
+        if (!dir.isDirectory) return false
+        return when (id) {
+            "tts_kokoro" ->
+                (File(dir, "model.onnx").exists() || File(dir, "model.int8.onnx").exists()) &&
+                    File(dir, "voices.bin").length() > 0 && File(dir, "tokens.txt").exists()
+            else -> dir.walkTopDown().any {
+                it.isFile && (it.name.endsWith(".mdl") || it.name.endsWith(".am.yaml") || it.name == "circular-am.yaml")
+            }
+        }
+    }
+
+    private fun refreshDownloadedStates() {
         val current = _models.value.toMutableList()
         for (i in current.indices) {
             val m = current[i]
-            if (m.id.endsWith("_system")) continue
-            val modelFile = File(modelsDir, "${m.id}.bin")
-            if (modelFile.exists() && modelFile.length() > 1024) {
-                current[i] = m.copy(isDownloaded = true)
+            if (m.downloadUrl.isBlank()) continue
+            if (isExtracted(m.id)) {
+                current[i] = m.copy(isDownloaded = true, isDownloading = false, downloadProgress = 1f)
+            } else {
+                // stale partial archive? delete so retry is clean
+                val a = archiveFor(m.id)
+                if (a.exists() && !m.isDownloading) a.delete()
+                current[i] = m.copy(isDownloaded = false)
             }
         }
         _models.value = current
     }
+
+    private fun restoreSelections() {
+        val stt = prefs.getString("stt", "stt_system") ?: "stt_system"
+        val tts = prefs.getString("tts", "tts_system") ?: "tts_system"
+        applySelection(VoiceModelType.STT, stt)
+        applySelection(VoiceModelType.TTS, tts)
+    }
+
+    private fun applySelection(type: VoiceModelType, id: String) {
+        val target = _models.value.find { it.id == id && it.type == type } ?: return
+        if (!target.isDownloaded && target.downloadUrl.isNotBlank()) return
+        val list = _models.value.toMutableList()
+        for (i in list.indices) {
+            if (list[i].type == type) list[i] = list[i].copy(isSelected = list[i].id == id)
+        }
+        _models.value = list
+    }
+
+    /**
+     * Downloads a real model archive, extracts it and verifies contents.
+     */
+    fun downloadModel(modelId: String) {
+        val model = _models.value.find { it.id == modelId } ?: return
+        if (model.downloadUrl.isBlank() || model.isDownloading || model.isDownloaded) return
+
+        updateModelItem(modelId) { it.copy(isDownloading = true, downloadProgress = 0.01f, loadError = "") }
+
+        activeDownloadJob = scope.launch(Dispatchers.IO) {
+            val archive = archiveFor(modelId)
+            try {
+                val request = Request.Builder().url(model.downloadUrl).build()
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) error("HTTP ${response.code}")
+                    val body = response.body ?: error("Empty body")
+                    val totalBytes = if (body.contentLength() > 0) body.contentLength() else model.sizeBytes
+                    var bytesRead = 0L
+                    val buffer = ByteArray(64 * 1024)
+                    body.byteStream().use { input ->
+                        FileOutputStream(archive).use { output ->
+                            var read: Int
+                            while (input.read(buffer).also { read = it } != -1) {
+                                output.write(buffer, 0, read)
+                                bytesRead += read
+                                val p = (bytesRead.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                                updateModelItem(modelId) { it.copy(downloadProgress = p) }
+                            }
+                        }
+                    }
+                }
+
+                // Extract
+                val dest = modelDirFor(modelId)
+                dest.deleteRecursively()
+                dest.mkdirs()
+                if (model.downloadUrl.endsWith(".tar.bz2")) extractTarBz2(archive, dest)
+                else extractZip(archive, dest)
+                archive.delete()
+
+                if (!isExtracted(modelId)) {
+                    dest.deleteRecursively()
+                    error("Extracted model failed verification")
+                }
+                updateModelItem(modelId) {
+                    it.copy(isDownloaded = true, isDownloading = false, downloadProgress = 1f)
+                }
+                // Auto-select what the user just downloaded — that's the intent.
+                selectModel(modelId)
+            } catch (e: Throwable) {
+                archive.delete()
+                updateModelItem(modelId) {
+                    it.copy(isDownloaded = false, isDownloading = false, downloadProgress = 0f,
+                        loadError = e.message ?: "Download failed")
+                }
+            }
+        }
+    }
+
+    private fun extractTarBz2(archive: File, dest: File) {
+        FileInputStream(archive).buffered().use { fis ->
+            BZip2CompressorInputStream(fis).use { bzin ->
+                TarArchiveInputStream(bzin).use { tin ->
+                    var entry = tin.nextEntry
+                    while (entry != null) {
+                        val out = sanitize(dest, entry.name)
+                        if (entry.isDirectory) {
+                            out.mkdirs()
+                        } else {
+                            out.parentFile?.mkdirs()
+                            FileOutputStream(out).use { fos -> tin.copyTo(fos) }
+                        }
+                        entry = tin.nextEntry
+                    }
+                }
+            }
+        }
+        flattenSingleTopDir(dest)
+    }
+
+    private fun extractZip(archive: File, dest: File) {
+        ZipInputStream(BufferedInputStream(FileInputStream(archive))).use { zin ->
+            var entry = zin.nextEntry
+            while (entry != null) {
+                val out = sanitize(dest, entry.name)
+                if (entry.isDirectory) out.mkdirs()
+                else {
+                    out.parentFile?.mkdirs()
+                    FileOutputStream(out).use { fos -> zin.copyTo(fos) }
+                }
+                zin.closeEntry()
+                entry = zin.nextEntry
+            }
+        }
+        flattenSingleTopDir(dest)
+    }
+
+    /** Zip-slip guard. */
+    private fun sanitize(dest: File, name: String): File {
+        val out = File(dest, name)
+        if (!out.canonicalPath.startsWith(dest.canonicalPath + File.separator))
+            throw java.io.IOException("Bad archive path: $name")
+        return out
+    }
+
+    /** Models ship inside one top-level folder; move contents up so paths are stable. */
+    private fun flattenSingleTopDir(dest: File) {
+        val children = dest.listFiles() ?: return
+        if (children.size == 1 && children[0].isDirectory) {
+            val top = children[0]
+            top.listFiles()?.forEach { it.renameTo(File(dest, it.name)) }
+            top.delete()
+        }
+    }
+
+    fun deleteModel(modelId: String) {
+        if (modelId.endsWith("_system")) return
+        modelDirFor(modelId).deleteRecursively()
+        archiveFor(modelId).delete()
+        val model = _models.value.find { it.id == modelId } ?: return
+        when (modelId) {
+            "tts_kokoro" -> kokoroEngine.release()
+            else -> if (modelId.startsWith("stt_vosk")) voskEngine.release()
+        }
+        updateModelItem(modelId) {
+            it.copy(isDownloaded = false, isDownloading = false, downloadProgress = 0f, isSelected = false, loadError = "")
+        }
+        if (model.isSelected) {
+            selectModel(if (model.type == VoiceModelType.STT) "stt_system" else "tts_system")
+        }
+    }
+
+    fun selectModel(modelId: String) {
+        val target = _models.value.find { it.id == modelId } ?: return
+        if (!target.isDownloaded && target.downloadUrl.isNotBlank()) return
+        applySelection(target.type, modelId)
+        prefs.edit()
+            .putString(if (target.type == VoiceModelType.STT) "stt" else "tts", modelId)
+            .apply()
+        // Bring the real engine up for the new selection.
+        scope.launch(Dispatchers.IO) {
+            when {
+                modelId == "tts_kokoro" -> ensureKokoroLoaded()
+                modelId.startsWith("stt_vosk") -> ensureVoskLoaded(modelId)
+            }
+        }
+    }
+
+    private fun ensureKokoroLoaded() {
+        val dir = modelDirFor("tts_kokoro")
+        if (!isExtracted("tts_kokoro")) return
+        if (kokoroCandidateDir == dir.canonicalPath && kokoroEngine.isReady) return
+        val err = kokoroEngine.load(dir)
+        kokoroCandidateDir = dir.canonicalPath
+        updateModelItem("tts_kokoro") { it.copy(loadError = err) }
+    }
+
+    private fun ensureVoskLoaded(modelId: String) {
+        val dir = modelDirFor(modelId)
+        if (!isExtracted(modelId)) return
+        if (voskEngine.isReady) return
+        val err = voskEngine.load(dir)
+        updateModelItem(modelId) { it.copy(loadError = err) }
+    }
+
+    private fun updateModelItem(id: String, transform: (VoiceModelInfo) -> VoiceModelInfo) {
+        val list = _models.value.toMutableList()
+        val index = list.indexOfFirst { it.id == id }
+        if (index != -1) {
+            list[index] = transform(list[index])
+            _models.value = list
+        }
+    }
+
+    // ───────────────────────── system TTS ─────────────────────────
 
     private fun initializeTts() {
         textToSpeech = TextToSpeech(context.applicationContext, this)
@@ -216,122 +425,56 @@ class VoiceEngineManager(
         }
     }
 
-    /**
-     * Downloads an on-device STT or TTS model with real-time percentage tracking.
-     */
-    fun downloadModel(modelId: String) {
-        val model = _models.value.find { it.id == modelId } ?: return
-        if (model.isDownloaded || model.isDownloading) return
-
-        updateModelItem(modelId) { it.copy(isDownloading = true, downloadProgress = 0.01f) }
-
-        activeDownloadJob = scope.launch(Dispatchers.IO) {
-            val destFile = File(modelsDir, "${model.id}.bin")
-            val targetUrl = model.downloadUrl.ifBlank { "https://example.com/model" }
-
-            try {
-                val request = Request.Builder().url(targetUrl).build()
-                httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        // Create simulated lightweight on-device model file if offline/mirrored
-                        writePlaceholderModelFile(destFile, model.sizeBytes)
-                    } else {
-                        val body = response.body ?: throw Exception("Empty body")
-                        val totalBytes = if (body.contentLength() > 0) body.contentLength() else model.sizeBytes
-                        var bytesRead = 0L
-                        val buffer = ByteArray(8192)
-
-                        body.byteStream().use { input ->
-                            FileOutputStream(destFile).use { output ->
-                                var read: Int
-                                while (input.read(buffer).also { read = it } != -1) {
-                                    output.write(buffer, 0, read)
-                                    bytesRead += read
-                                    val progress = (bytesRead.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-                                    updateModelItem(modelId) { it.copy(downloadProgress = progress) }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                updateModelItem(modelId) {
-                    it.copy(
-                        isDownloaded = true,
-                        isDownloading = false,
-                        downloadProgress = 1f
-                    )
-                }
-            } catch (e: Exception) {
-                // If network failed, save local on-device verified binary bundle
-                writePlaceholderModelFile(destFile, model.sizeBytes)
-                updateModelItem(modelId) {
-                    it.copy(
-                        isDownloaded = true,
-                        isDownloading = false,
-                        downloadProgress = 1f
-                    )
-                }
-            }
-        }
-    }
-
-    private fun writePlaceholderModelFile(file: File, sizeBytes: Long) {
-        try {
-            FileOutputStream(file).use { fos ->
-                val header = "TAILNODE_VOICE_MODEL_V1_${file.name}\n".toByteArray()
-                fos.write(header)
-                val dummy = ByteArray(1024)
-                var written = header.size.toLong()
-                val target = sizeBytes.coerceAtMost(2 * 1024 * 1024) // Cap local payload storage
-                while (written < target) {
-                    fos.write(dummy)
-                    written += dummy.size
-                }
-            }
-        } catch (_: Exception) {}
-    }
-
-    fun deleteModel(modelId: String) {
-        val file = File(modelsDir, "$modelId.bin")
-        if (file.exists()) file.delete()
-        updateModelItem(modelId) {
-            it.copy(isDownloaded = false, isDownloading = false, downloadProgress = 0f, isSelected = false)
-        }
-        // If deleted model was selected, fallback to system model
-        val model = _models.value.find { it.id == modelId }
-        if (model != null && model.isSelected) {
-            val fallbackId = if (model.type == VoiceModelType.STT) "stt_system" else "tts_system"
-            selectModel(fallbackId)
-        }
-    }
-
-    fun selectModel(modelId: String) {
-        val target = _models.value.find { it.id == modelId } ?: return
-        val current = _models.value.toMutableList()
-        for (i in current.indices) {
-            val m = current[i]
-            if (m.type == target.type) {
-                current[i] = m.copy(isSelected = m.id == modelId)
-            }
-        }
-        _models.value = current
-    }
-
-    private fun updateModelItem(id: String, transform: (VoiceModelInfo) -> VoiceModelInfo) {
-        val list = _models.value.toMutableList()
-        val index = list.indexOfFirst { it.id == id }
-        if (index != -1) {
-            list[index] = transform(list[index])
-            _models.value = list
-        }
-    }
+    // ───────────────────────── listening ─────────────────────────
 
     /**
-     * Starts listening for user voice speech.
+     * Starts listening with the SELECTED engine: Vosk when a downloaded Vosk
+     * model is selected & loaded, otherwise the Android system recognizer.
      */
     fun startListening(onTranscriptionComplete: (String) -> Unit) {
         stopSpeaking()
+        val stt = selectedSttModel
+        if (stt != null && stt.id.startsWith("stt_vosk")) {
+            // Ensure engine is loaded for the selected model (async, then fall through next tap)
+            if (!voskEngine.isReady) {
+                ensureVoskLoaded(stt.id)
+                if (!voskEngine.isReady) {
+                    _voiceState.value = VoiceState.IDLE
+                    return
+                }
+            }
+            _liveSpokenText.value = ""
+            _voiceState.value = VoiceState.LISTENING
+            mainHandler.post {
+                val started = voskEngine.startListening(
+                    sampleRate = 16000f,
+                    onPartial = { text ->
+                        _liveSpokenText.value = text
+                        _rmsDecibels.value = 5f // Vosk gives no rms; mid-level pulse
+                    },
+                    onFinal = { text ->
+                        _liveSpokenText.value = text
+                        _rmsDecibels.value = 0f
+                        voskEngine.stop()
+                        if (text.isNotBlank()) {
+                            _voiceState.value = VoiceState.THINKING
+                            onTranscriptionComplete(text)
+                        } else {
+                            _voiceState.value = VoiceState.IDLE
+                        }
+                    },
+                    onError = { _ ->
+                        _rmsDecibels.value = 0f
+                        voskEngine.stop()
+                        _voiceState.value = VoiceState.IDLE
+                    }
+                )
+                if (!started) _voiceState.value = VoiceState.IDLE
+            }
+            return
+        }
+
+        // System recognizer
         mainHandler.post {
             if (SpeechRecognizer.isRecognitionAvailable(context)) {
                 speechRecognizer?.destroy()
@@ -389,7 +532,7 @@ class VoiceEngineManager(
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag())
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true) // Prefer on-device processing
+                    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 }
                 speechRecognizer?.startListening(intent)
             } else {
@@ -402,14 +545,18 @@ class VoiceEngineManager(
         mainHandler.post {
             try {
                 speechRecognizer?.stopListening()
+                voskEngine.stopListening()
             } catch (_: Exception) {}
             _voiceState.value = VoiceState.IDLE
             _rmsDecibels.value = 0f
         }
     }
 
+    // ───────────────────────── speaking ─────────────────────────
+
     /**
-     * Speaks the assistant response text aloud using selected on-device TTS.
+     * Speaks with the SELECTED engine: Kokoro neural voice when downloaded,
+     * loaded and selected — otherwise the system TextToSpeech.
      */
     fun speakText(text: String) {
         val clean = cleanTextForSpeech(text)
@@ -418,15 +565,33 @@ class VoiceEngineManager(
         _liveAiSpeechText.value = clean
         _voiceState.value = VoiceState.SPEAKING
 
+        val useKokoro = selectedTtsModel?.id == "tts_kokoro" && kokoroEngine.isReady
+        if (useKokoro) {
+            scope.launch(Dispatchers.Default) {
+                val ok = kokoroEngine.speakBlocking(clean)
+                withMain { _voiceState.value = VoiceState.IDLE }
+                if (!ok) speakViaSystem(clean)
+            }
+            return
+        }
+        speakViaSystem(clean)
+    }
+
+    private fun speakViaSystem(clean: String) {
         if (isTtsInitialized) {
             textToSpeech?.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "tailnode_voice_speech")
+        } else {
+            _voiceState.value = VoiceState.IDLE
         }
     }
+
+    private fun withMain(block: () -> Unit) = mainHandler.post(block)
 
     fun stopSpeaking() {
         if (isTtsInitialized) {
             textToSpeech?.stop()
         }
+        kokoroEngine.stopPlayback()
         if (_voiceState.value == VoiceState.SPEAKING) {
             _voiceState.value = VoiceState.IDLE
         }
@@ -468,6 +633,8 @@ class VoiceEngineManager(
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         textToSpeech = null
+        kokoroEngine.release()
+        voskEngine.release()
         activeDownloadJob?.cancel()
     }
 }

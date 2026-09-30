@@ -17,6 +17,9 @@ android {
     applicationId = "com.aistudio.tailnodepower.kxvp"
     minSdk = 24
     targetSdk = 36
+    ndk {
+      abiFilters += listOf("arm64-v8a", "x86_64")
+    }
     versionCode = 1
     versionName = "1.0"
 
@@ -76,6 +79,13 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  // On-device voice: Kokoro neural TTS (sherpa-onnx) + Vosk offline STT
+  implementation("com.github.k2-fsa:sherpa-onnx:1.13.8") {
+    exclude(group = "com.github.k2-fsa.sherpa-onnx", module = "sherpa-onnx-jvm")
+  }
+  implementation("com.alphacephei:vosk-android:0.3.75")
+  implementation("net.java.dev.jna:jna:5.14.1@aar")
+  implementation("org.apache.commons:commons-compress:1.26.2")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
