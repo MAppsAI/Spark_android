@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.OpenInNew
@@ -462,7 +463,12 @@ fun FileTransferScreen(
 
                 if (recentTransfers.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No recent transfers yet. Upload or download files via SFTP.", fontSize = 12.sp, color = TextMuted)
+                        com.example.ui.components.SparkEmptyState(
+                            title = "No transfers yet",
+                            subtitle = "Upload or download files over SFTP and they'll show up here.",
+                            icon = Icons.Default.FolderOpen,
+                            accent = com.example.ui.theme.SparkBlue,
+                        )
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -470,7 +476,8 @@ fun FileTransferScreen(
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                 colors = CardDefaults.cardColors(containerColor = DarkSurfaceElevated),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(14.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.DarkBorderSubtle)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
