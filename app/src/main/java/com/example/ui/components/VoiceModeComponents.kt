@@ -762,10 +762,13 @@ fun VoiceModelsSheet(
     onDownloadModel: (String) -> Unit,
     onDeleteModel: (String) -> Unit,
     onSelectModel: (String) -> Unit,
+    lanServerUrl: String = "",
+    onSetLanServerUrl: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by remember { mutableStateOf(VoiceModelType.STT) }
+    var lanDraft by remember { mutableStateOf(lanServerUrl) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -793,6 +796,48 @@ fun VoiceModelsSheet(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
+
+            // LAN voice server address (desktop Kokoro streaming)
+            if (models.any { it.id == "tts_lan" }) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = lanDraft,
+                        onValueChange = { lanDraft = it },
+                        placeholder = { Text("http://192.168.0.20:8764", fontSize = 12.sp, color = TextMuted) },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextPrimary, fontFamily = FontFamily.Monospace),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = CyberCyan,
+                            unfocusedBorderColor = DarkBorder,
+                            cursorColor = CyberCyan
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = { onSetLanServerUrl(lanDraft.trim()) },
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = CyberCyan),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        Text("Test", fontSize = 12.sp)
+                    }
+                }
+                val lanModel = models.find { it.id == "tts_lan" }
+                Text(
+                    text = if (lanModel != null && lanModel.loadError.isBlank() && lanServerUrl.isNotBlank())
+                        "● Connected — voice replies stream from your PC"
+                    else if (lanModel?.loadError?.isNotBlank() == true) lanModel.loadError
+                    else "Run spark_tts_server.py on your PC, enter its address, tap Test, then Use it under TTS.",
+                    fontSize = 10.sp,
+                    color = if (lanModel != null && lanModel.loadError.isBlank() && lanServerUrl.isNotBlank()) TerminalGreen else TextMuted,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
 
             // Tab row: STT (Speech-to-Text) vs TTS (Text-to-Speech)
             Row(

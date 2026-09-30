@@ -115,6 +115,17 @@ class VoiceEngineManager(
             isDownloaded = true
         ),
         VoiceModelInfo(
+            id = "tts_lan",
+            name = "LAN Voice Server (fastest)",
+            type = VoiceModelType.TTS,
+            tier = "Streaming (0MB)",
+            sizeBytes = 0L,
+            sizeFormatted = "0 MB",
+            description = "Streams Kokoro audio from spark_tts_server.py on your PC — playback starts in ~1s. Set the address in Voice settings.",
+            downloadUrl = "",
+            isDownloaded = true
+        ),
+        VoiceModelInfo(
             id = "tts_kokoro",
             name = "Kokoro Neural Voice",
             type = VoiceModelType.TTS,
@@ -156,12 +167,19 @@ class VoiceEngineManager(
     // Real engines
     private val kokoroEngine = KokoroTtsEngine()
     private val voskEngine = VoskSttEngine()
+    private val lanEngine = LanTtsEngine()
     private var kokoroCandidateDir: String = ""
 
     init {
         refreshDownloadedStates()
         restoreSelections()
         initializeTts()
+        // Restore LAN TTS server address and probe in background.
+        val lanUrl = prefs.getString("lan_tts_url", "") ?: ""
+        if (lanUrl.isNotBlank()) {
+            lanEngine.setServer(lanUrl)
+            scope.launch(Dispatchers.IO) { lanEngine.probe() }
+        }
         // Lazy-load whichever real engines back the current selection.
         selectedTtsModel?.takeIf { it.id == "tts_kokoro" && it.isDownloaded }?.let { ensureKokoroLoaded() }
         selectedSttModel?.takeIf { it.id.startsWith("stt_vosk") && it.isDownloaded }?.let { ensureVoskLoaded(it.id) }
@@ -353,6 +371,19 @@ class VoiceEngineManager(
             selectModel(if (model.type == VoiceModelType.STT) "stt_system" else "tts_system")
         }
     }
+
+    fun setLanServerUrl(url: String) {
+        lanEngine.setServer(url)
+        prefs.edit().putString("lan_tts_url", url).apply()
+        scope.launch(Dispatchers.IO) {
+            val ok = lanEngine.probe()
+            updateModelItem("tts_lan") {
+                it.copy(loadError = if (ok) "" else "Unreachable at " + lanEngine.getServer())
+            }
+        }
+    }
+
+    fun getLanServerUrl(): String = prefs.getString("lan_tts_url", "") ?: ""
 
     fun selectModel(modelId: String) {
         val target = _models.value.find { it.id == modelId } ?: return
@@ -568,12 +599,21 @@ class VoiceEngineManager(
         _liveAiSpeechText.value = clean
         _voiceState.value = VoiceState.SPEAKING
 
+        val useLan = selectedTtsModel?.id == "tts_lan" && lanEngine.isHealthy
         val useKokoro = selectedTtsModel?.id == "tts_kokoro" && kokoroEngine.isReady
-        if (useKokoro) {
+        if (useLan || useKokoro) {
             scope.launch(Dispatchers.Default) {
-                val ok = kokoroEngine.speakBlocking(clean)
+                val ok = if (useLan) lanEngine.speakBlocking(clean) else kokoroEngine.speakBlocking(clean)
                 withMain { _voiceState.value = VoiceState.IDLE }
-                if (!ok) speakViaSystem(clean)
+                // LAN hiccup mid-playback or dead server -> fall back to on-device Kokoro, then system
+                if (!ok) {
+                    if (useLan && kokoroEngine.isReady) {
+                        val ok2 = kokoroEngine.speakBlocking(clean)
+                        withMain { if (!ok2) {} }
+                    }
+                    if (!(useLan && kokoroEngine.isReady)) speakViaSystem(clean)
+                    withMain { _voiceState.value = VoiceState.IDLE }
+                }
             }
             return
         }
@@ -595,6 +635,7 @@ class VoiceEngineManager(
             textToSpeech?.stop()
         }
         kokoroEngine.stopPlayback()
+        lanEngine.stop()
         if (_voiceState.value == VoiceState.SPEAKING) {
             _voiceState.value = VoiceState.IDLE
         }
@@ -638,6 +679,7 @@ class VoiceEngineManager(
         textToSpeech = null
         kokoroEngine.release()
         voskEngine.release()
+        lanEngine.stop()
         activeDownloadJob?.cancel()
     }
 }

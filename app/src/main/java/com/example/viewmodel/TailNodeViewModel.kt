@@ -207,6 +207,9 @@ class TailNodeViewModel(
     val voiceLiveSpokenText: StateFlow<String> get() = voiceEngineManager.liveSpokenText
     val voiceLiveAiSpeechText: StateFlow<String> get() = voiceEngineManager.liveAiSpeechText
 
+    fun getLanServerUrl(): String = voiceEngineManager.getLanServerUrl()
+    fun setLanServerUrl(url: String) = voiceEngineManager.setLanServerUrl(url)
+
     val selectedSttModel: VoiceModelInfo? get() = voiceEngineManager.selectedSttModel
     val selectedTtsModel: VoiceModelInfo? get() = voiceEngineManager.selectedTtsModel
 

@@ -1122,6 +1122,8 @@ fun LlmChatScreen(
             onDownloadModel = { viewModel.downloadVoiceModel(it) },
             onDeleteModel = { viewModel.deleteVoiceModel(it) },
             onSelectModel = { viewModel.selectVoiceModel(it) },
+            lanServerUrl = viewModel.getLanServerUrl(),
+            onSetLanServerUrl = { viewModel.setLanServerUrl(it) },
             onDismiss = { viewModel.closeVoiceModelsSheet() }
         )
     }
