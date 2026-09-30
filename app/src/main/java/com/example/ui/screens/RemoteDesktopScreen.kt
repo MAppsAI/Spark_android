@@ -80,6 +80,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.TailNode
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.SparkBlue
+import com.example.ui.theme.SparkBlueDeep
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
@@ -275,24 +276,34 @@ fun RemoteDesktopScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // Big Primary Action: Launch Remote Desktop Session
-                        Button(
-                            onClick = {
-                                launchDirectDesktopClient(context, node, defaultClientPort)
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = CyberCyan,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().height(46.dp).testTag("launch_desktop_session_btn")
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(SparkBlue, SparkBlueDeep)
+                                    )
+                                )
+                                .border(
+                                    1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp)
+                                )
+                                .clickable {
+                                    launchDirectDesktopClient(context, node, defaultClientPort)
+                                }
+                                .testTag("launch_desktop_session_btn"),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Launch, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Launch Remote Desktop Session",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Launch, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Launch Remote Desktop Session",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
