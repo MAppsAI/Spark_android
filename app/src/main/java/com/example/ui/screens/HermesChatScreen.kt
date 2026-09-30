@@ -297,10 +297,9 @@ fun HermesChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                item { Spacer(modifier = Modifier.height(6.dp)) }
 
                 items(messages, key = { it.id }) { msg ->
                     HermesMessageBubble(
@@ -320,12 +319,9 @@ fun HermesChatScreen(
                 }
 
                 // Live tool calls executing in real-time
-                if (liveTools.isNotEmpty()) {
-                    items(liveTools, key = { "live_${it.id}" }) { toolCall ->
-                        HermesToolExecutionCard(
-                            toolCall = toolCall,
-                            nodeName = node.name
-                        )
+                if (liveTools.any { it.name.isNotBlank() }) {
+                    item(key = "live_strip") {
+                        HermesToolStrip(tools = liveTools, nodeName = node.name)
                     }
                 }
 
@@ -350,7 +346,6 @@ fun HermesChatScreen(
                     }
                 }
 
-                item { Spacer(modifier = Modifier.height(6.dp)) }
             }
         }
 
@@ -601,7 +596,7 @@ private fun HermesMessageBubble(
         // Label
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 3.dp)
         ) {
             if (!isUser) {
                 Icon(
@@ -633,10 +628,10 @@ private fun HermesMessageBubble(
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        // Tool execution cards if this step performed computer actions
-        toolsList.forEach { tool ->
-            HermesToolExecutionCard(toolCall = tool, nodeName = nodeName)
-            Spacer(modifier = Modifier.height(4.dp))
+        // Tool executions collapsed into ONE compact strip (tap to expand details)
+        if (toolsList.any { it.name.isNotBlank() }) {
+            HermesToolStrip(tools = toolsList, nodeName = nodeName)
+            Spacer(modifier = Modifier.height(6.dp))
         }
 
         // Message Content Box
@@ -660,12 +655,12 @@ private fun HermesMessageBubble(
                     Toast.makeText(context, "Copied response to clipboard", Toast.LENGTH_SHORT).show()
                 }
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)) {
                 Text(
                     text = message.content,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = TextPrimary,
-                    lineHeight = 18.sp
+                    lineHeight = 20.sp
                 )
             }
         }
@@ -736,6 +731,89 @@ private fun HermesThinkingCard(
                             .padding(8.dp)
                             .fillMaxWidth()
                     )
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * One-line summary strip for all tool calls in a message.
+ * Collapsed by default — keeps the chat flowing; tap to expand details.
+ */
+@Composable
+private fun HermesToolStrip(
+    tools: List<HermesToolCall>,
+    nodeName: String
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val visible = tools.filter { it.name.isNotBlank() }
+    if (visible.isEmpty()) return
+
+    val running = visible.count { it.status == HermesToolStatus.RUNNING }
+    val errored = visible.count { it.status == HermesToolStatus.ERROR }
+    val leadColor = when {
+        running > 0 -> HermesGold
+        errored > 0 -> TerminalRed
+        else -> TerminalGreen
+    }
+    val summary = when {
+        running > 0 -> "Running ${visible.first { it.status == HermesToolStatus.RUNNING }.name}…"
+        errored > 0 -> "$errored of ${visible.size} tool${if (visible.size > 1) "s" else ""} failed"
+        else -> "${visible.size} tool${if (visible.size > 1) "s" else ""} on ${nodeName}"
+    }
+
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(DarkSurfaceVariant.copy(alpha = 0.65f))
+            .border(1.dp, leadColor.copy(alpha = 0.28f), shape)
+            .clickable { expanded = !expanded }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                if (running > 0) {
+                    CircularProgressIndicator(modifier = Modifier.size(11.dp), color = HermesGold, strokeWidth = 1.6.dp)
+                } else {
+                    Icon(
+                        imageVector = if (errored > 0) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = leadColor,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(7.dp))
+                Text(
+                    text = summary,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = TextMuted,
+                modifier = Modifier.size(15.dp)
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 8.dp)) {
+                visible.forEach { tool ->
+                    HermesToolExecutionCard(toolCall = tool, nodeName = nodeName)
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
         }
