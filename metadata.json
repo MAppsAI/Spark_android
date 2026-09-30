@@ -1,0 +1,7 @@
+{
+  "name": "TailNode Power",
+  "description": "Connect to your Tailscale network computers to transfer files, run terminal commands, chat with local LLMs, and access remote desktop.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
