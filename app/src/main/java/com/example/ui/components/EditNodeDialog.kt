@@ -49,6 +49,9 @@ import com.example.data.model.TailNode
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.SparkBlue
 import com.example.ui.theme.DarkBorder
+import androidx.compose.foundation.border
+import com.example.ui.theme.DarkBorderSubtle
+import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.HermesGold
 import com.example.ui.theme.TextPrimary
@@ -82,8 +85,9 @@ fun EditNodeDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(24.dp),
             color = DarkSurfaceElevated,
+            border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder),
             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
         ) {
             Column(
@@ -100,8 +104,7 @@ fun EditNodeDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Edit Computer Settings",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge,
                             color = TextPrimary
                         )
                     }
@@ -144,20 +147,25 @@ fun EditNodeDialog(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surface
+                                    if (isSelected) SparkBlue.copy(alpha = 0.16f)
+                                    else DarkSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) SparkBlue.copy(alpha = 0.45f) else DarkBorderSubtle,
+                                    RoundedCornerShape(12.dp)
                                 )
                                 .clickable { selectedOs = os }
-                                .padding(vertical = 8.dp),
+                                .padding(vertical = 9.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = os.displayName,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (isSelected) SparkBlue else TextSecondary
                             )
                         }
                     }
