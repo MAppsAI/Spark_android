@@ -45,7 +45,7 @@ class LanTtsEngine {
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) { healthy = false; return false }
                 val body = resp.body?.string() ?: return false
-                healthy = bool(Regex("\"ready\"\\s*:\\s*true").find(body))
+                healthy = Regex("\"ready\"\\s*:\\s*true").find(body) != null
                 val m = Regex("\"sample_rate\"\\s*:\\s*(\\d+)").find(body)
                 m?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }?.let { sampleRate = it }
                 healthy
