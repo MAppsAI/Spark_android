@@ -172,7 +172,8 @@ class LocalLlmService {
         node: TailNode,
         model: String,
         prompt: String,
-        history: List<ChatMessage> = emptyList()
+        history: List<ChatMessage> = emptyList(),
+        systemPrompt: String = ""
     ): LlmResponse = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         val baseUrl = node.getEffectiveLlmBaseUrl()
@@ -186,6 +187,12 @@ class LocalLlmService {
 
         // Build messages array containing full conversation context (up to last 16 turns)
         val messagesArray = JSONArray()
+        if (systemPrompt.isNotBlank()) {
+            messagesArray.put(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt.trim())
+            })
+        }
         val recentHistory = history.takeLast(16)
         for (msg in recentHistory) {
             if (msg.role in listOf("user", "assistant", "system") && msg.content.isNotBlank()) {
@@ -471,6 +478,7 @@ class LocalLlmService {
         model: String,
         prompt: String,
         history: List<ChatMessage> = emptyList(),
+        systemPrompt: String = "",
         onToken: (String) -> Unit
     ): LlmResponse = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
@@ -484,6 +492,12 @@ class LocalLlmService {
         }
 
         val messagesArray = JSONArray()
+        if (systemPrompt.isNotBlank()) {
+            messagesArray.put(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt.trim())
+            })
+        }
         for (msg in history.takeLast(16)) {
             if (msg.role in listOf("user", "assistant", "system") && msg.content.isNotBlank()) {
                 messagesArray.put(JSONObject().apply {

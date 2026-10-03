@@ -1124,6 +1124,9 @@ fun LlmChatScreen(
             onSelectModel = { viewModel.selectVoiceModel(it) },
             lanServerUrl = viewModel.getLanServerUrl(),
             onSetLanServerUrl = { viewModel.setLanServerUrl(it) },
+            voiceSystemPrompt = viewModel.getVoiceSystemPrompt(),
+            onSetVoiceSystemPrompt = { viewModel.setVoiceSystemPrompt(it) },
+            defaultVoiceSystemPrompt = viewModel.defaultVoiceSystemPrompt,
             onDismiss = { viewModel.closeVoiceModelsSheet() }
         )
     }

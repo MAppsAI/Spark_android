@@ -764,11 +764,15 @@ fun VoiceModelsSheet(
     onSelectModel: (String) -> Unit,
     lanServerUrl: String = "",
     onSetLanServerUrl: (String) -> Unit = {},
+    voiceSystemPrompt: String = "",
+    onSetVoiceSystemPrompt: (String) -> Unit = {},
+    defaultVoiceSystemPrompt: String = "",
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by remember { mutableStateOf(VoiceModelType.STT) }
     var lanDraft by remember { mutableStateOf(lanServerUrl) }
+    var voicePromptDraft by remember { mutableStateOf(voiceSystemPrompt) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -836,6 +840,46 @@ fun VoiceModelsSheet(
                     color = if (lanModel != null && lanModel.loadError.isBlank() && lanServerUrl.isNotBlank()) TerminalGreen else TextMuted,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Editable voice-mode system prompt (applies to spoken prompts only)
+                Text(
+                    "Voice system prompt (spoken replies)",
+                    fontSize = 11.sp,
+                    color = TextMuted,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = voicePromptDraft,
+                    onValueChange = { voicePromptDraft = it },
+                    placeholder = { Text(defaultVoiceSystemPrompt, fontSize = 11.sp, color = TextMuted) },
+                    minLines = 2,
+                    maxLines = 5,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextPrimary),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CyberCyan,
+                        unfocusedBorderColor = DarkBorder,
+                        cursorColor = CyberCyan
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { onSetVoiceSystemPrompt(voicePromptDraft) },
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = CyberCyan),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(40.dp)
+                    ) { Text("Save prompt", fontSize = 12.sp) }
+                    TextButton(onClick = {
+                        voicePromptDraft = defaultVoiceSystemPrompt
+                        onSetVoiceSystemPrompt(defaultVoiceSystemPrompt)
+                    }) {
+                        Text("Reset", fontSize = 12.sp, color = TextMuted)
+                    }
+                }
                 Spacer(modifier = Modifier.height(10.dp))
             }
 

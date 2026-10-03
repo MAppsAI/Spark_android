@@ -210,6 +210,11 @@ class TailNodeViewModel(
     fun getLanServerUrl(): String = voiceEngineManager.getLanServerUrl()
     fun setLanServerUrl(url: String) = voiceEngineManager.setLanServerUrl(url)
 
+    fun getVoiceSystemPrompt(): String = voiceEngineManager.getVoiceSystemPrompt()
+    fun setVoiceSystemPrompt(text: String) = voiceEngineManager.setVoiceSystemPrompt(text)
+    fun voiceSystemPromptOrDefault(): String = voiceEngineManager.getVoiceSystemPrompt()
+    val defaultVoiceSystemPrompt: String get() = com.example.voice.DEFAULT_VOICE_SYSTEM_PROMPT
+
     val selectedSttModel: VoiceModelInfo? get() = voiceEngineManager.selectedSttModel
     val selectedTtsModel: VoiceModelInfo? get() = voiceEngineManager.selectedTtsModel
 
@@ -1172,12 +1177,14 @@ class TailNodeViewModel(
             }
 
             val history = _chatMessages.value.filter { it.conversationId == currentConvId }
+            val voiceSys = voiceEngineManager.getVoiceSystemPrompt()
             val response = if (lanSession != null) {
                 llmService.sendChatMessageStreaming(
                     node = targetNode,
                     model = activeModelName,
                     prompt = trimmed,
-                    history = history
+                    history = history,
+                    systemPrompt = voiceSys
                 ) { token ->
                     gate?.feed(token)
                     speechCaption.append(token)
@@ -1191,7 +1198,8 @@ class TailNodeViewModel(
                     node = targetNode,
                     model = activeModelName,
                     prompt = trimmed,
-                    history = history
+                    history = history,
+                    systemPrompt = voiceSys
                 )
             }
 

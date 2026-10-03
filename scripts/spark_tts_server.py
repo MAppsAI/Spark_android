@@ -24,6 +24,7 @@ import re
 import struct
 import sys
 import threading
+import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -34,6 +35,7 @@ import sherpa_onnx
 _lock = threading.Lock()
 _TTS = None
 _ARGS = None
+_T0 = time.time()
 
 
 def sanitize_text(text: str) -> str:
@@ -106,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, format, *args):  # noqa: A002
-        sys.stderr.write("[%s] %s\n" % (self.address_string(), format % args))
+        sys.stderr.write("[%s] %s t=%.2f\n" % (self.address_string(), format % args, time.time() - _T0))
 
     def _send(self, code, ctype, body: bytes):
         self.send_response(code)

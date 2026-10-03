@@ -31,6 +31,11 @@ import java.util.zip.ZipInputStream
 
 enum class VoiceModelType { STT, TTS }
 
+const val DEFAULT_VOICE_SYSTEM_PROMPT =
+    "You are speaking out loud, not writing. Answer in one or two short, " +
+    "conversational sentences. No lists, no markdown, no code, no emoji. " +
+    "Get to the point immediately."
+
 data class VoiceModelInfo(
     val id: String,
     val name: String,
@@ -384,6 +389,13 @@ class VoiceEngineManager(
     }
 
     fun getLanServerUrl(): String = prefs.getString("lan_tts_url", "") ?: ""
+
+    fun getVoiceSystemPrompt(): String =
+        prefs.getString("voice_system_prompt", null) ?: DEFAULT_VOICE_SYSTEM_PROMPT
+
+    fun setVoiceSystemPrompt(text: String) {
+        prefs.edit().putString("voice_system_prompt", text.trim()).apply()
+    }
 
     fun selectModel(modelId: String) {
         val target = _models.value.find { it.id == modelId } ?: return
