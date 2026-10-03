@@ -1161,12 +1161,14 @@ class TailNodeViewModel(
 
             if (lanSession != null) {
                 Thread {
-                    val ok = lanSession.join()
-                    if (!ok) {
-                        // LAN failed (e.g. server died mid-stream): speak whole text via fallback
-                        voiceEngineManager.speakText(speechCaption.toString())
-                    }
-                }.also { it.isDaemon = true }.start()
+                    try {
+                        val ok = lanSession.join()
+                        if (!ok) {
+                            // LAN failed (e.g. server died mid-stream): speak whole text via fallback
+                            voiceEngineManager.speakText(speechCaption.toString())
+                        }
+                    } catch (_: Throwable) {}
+                }.also { it.isDaemon = true; it.uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, _ -> }; it.start() }
             }
 
             val history = _chatMessages.value.filter { it.conversationId == currentConvId }
@@ -1342,11 +1344,8 @@ class TailNodeViewModel(
             var hermesPlaybackStarted = false
             if (lanSession != null) {
                 Thread {
-                    val ok = lanSession.join()
-                    if (!ok) {
-                        // server died mid-stream — nothing to retry safely; go silent-to-system
-                    }
-                }.also { it.isDaemon = true }.start()
+                    try { lanSession.join() } catch (_: Throwable) {}
+                }.also { it.isDaemon = true; it.uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, _ -> }; it.start() }
             }
 
             hermesService.streamAgentChat(

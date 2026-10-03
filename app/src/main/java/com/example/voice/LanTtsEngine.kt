@@ -67,8 +67,10 @@ class LanTtsEngine {
     fun openSession(speed: Double = 1.0): LanTtsSession = LanTtsSession(speed)
 
     inner class LanTtsSession(private val speed: Double) {
-        private val sentenceQ = java.util.concurrent.LinkedBlockingQueue<String?>()
-        private val pcmQ = java.util.concurrent.LinkedBlockingQueue<ByteArray?>()
+        // LinkedBlockingQueue forbids null — use sentinel objects (Any queue
+        // avoids Kotlin's ByteArray identity-copy problem on array queues).
+        private val sentenceQ = java.util.concurrent.LinkedBlockingQueue<Any>()
+        private val pcmQ = java.util.concurrent.LinkedBlockingQueue<Any>()
         private val sessionStop = AtomicBoolean(false)
         @Volatile private var failed = false
         @Volatile private var anyAudio = false
@@ -84,21 +86,25 @@ class LanTtsEngine {
         }
 
         fun finish() {
-            sentenceQ.put(null) // end marker for fetcher
+            sentenceQ.put(QUEUE_END) // end marker for fetcher
         }
 
         fun abort() {
             sessionStop.set(true)
             sentenceQ.clear()
-            sentenceQ.put(null)
-            pcmQ.put(null)
+            sentenceQ.put(QUEUE_END)
+            pcmQ.put(QUEUE_END)
             try { track?.let { if (it.playState == AudioTrack.PLAYSTATE_PLAYING) it.stop() } } catch (_: Throwable) {}
         }
 
         /** Blocking play until all queued sentences have played. Call on IO thread. */
         fun join(): Boolean {
             if (failed) return false
-            fetchThread = Thread { fetchLoop() }.also { it.isDaemon = true; it.start() }
+            fetchThread = Thread { fetchLoop() }.also {
+                it.uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, _ -> failed = true }
+                it.isDaemon = true
+                it.start()
+            }
 
             val sr = sampleRate.takeIf { it > 0 } ?: 24000
             val at = try {
@@ -124,11 +130,20 @@ class LanTtsEngine {
             }
             track = at
             playing = true
-            at.play()
+            try {
+                at.play()
+            } catch (_: Throwable) {
+                failed = true
+                try { at.release() } catch (_: Throwable) {}
+                playing = false
+                return false
+            }
             val buf = ByteArray(4096)
             try {
                 while (!sessionStop.get()) {
-                    val pcm = pcmQ.take() ?: break
+                    val item = pcmQ.take()
+                    if (item === QUEUE_END) break
+                    val pcm = item as? ByteArray ?: continue
                     var off = 0
                     while (off < pcm.size && !sessionStop.get()) {
                         val n = minOf(buf.size, pcm.size - off)
@@ -156,8 +171,10 @@ class LanTtsEngine {
         private fun fetchLoop() {
             try {
                 while (true) {
-                    val sentence = sentenceQ.take() ?: break
+                    val item = sentenceQ.take()
+                    if (item === QUEUE_END) break
                     if (sessionStop.get()) break
+                    val sentence = item as? String ?: continue
                     try {
                         val url = "$serverUrl/tts?text=${URLEncoder.encode(sentence, "UTF-8")}&sid=0&speed=$speed"
                         val req = Request.Builder().url(url).build()
@@ -180,7 +197,7 @@ class LanTtsEngine {
                     }
                 }
             } finally {
-                pcmQ.put(null) // end marker for player
+                pcmQ.put(QUEUE_END) // end marker for player — never null
             }
         }
     }
@@ -269,5 +286,6 @@ class LanTtsEngine {
 
     companion object {
         val IoDispatcher = Dispatchers.IO
+        private val QUEUE_END = Any() // sentinel: queues reject null
     }
 }
