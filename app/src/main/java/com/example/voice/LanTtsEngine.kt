@@ -181,15 +181,28 @@ class LanTtsEngine {
                         client.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) { failed = true; return }
                             val stream = resp.body?.byteStream() ?: return
-                            val all = java.io.ByteArrayOutputStream(1 shl 16)
+                            // Stream-forward PCM as the server produces it
+                            // (server flushes per chunk); first 44 bytes are the
+                            // RIFF header which we drop.
                             val chunk = ByteArray(16384)
-                            var n: Int
-                            while (stream.read(chunk).also { n = it } != -1) all.write(chunk, 0, n)
-                            val bytes = all.toByteArray()
-                            val pcm = if (bytes.size > 44 &&
-                                String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF"
-                            ) bytes.copyOfRange(44, bytes.size) else bytes
-                            if (pcm.isNotEmpty()) pcmQ.put(pcm)
+                            var headerLeft = 44
+                            var first = true
+                            while (!sessionStop.get()) {
+                                val n = stream.read(chunk)
+                                if (n == -1) break
+                                var off = 0
+                                var len = n
+                                if (headerLeft > 0) {
+                                    val skip = minOf(headerLeft, len)
+                                    headerLeft -= skip
+                                    off += skip
+                                    len -= skip
+                                }
+                                if (len > 0) {
+                                    pcmQ.put(chunk.copyOfRange(off, off + len))
+                                    if (first) first = false
+                                }
+                            }
                         }
                     } catch (_: Throwable) {
                         failed = true
