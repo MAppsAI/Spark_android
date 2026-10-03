@@ -1146,15 +1146,58 @@ class TailNodeViewModel(
         voiceEngineManager.setThinkingState()
         _isLlmGenerating.value = true
 
-        llmGenerationJob = viewModelScope.launch {
+        llmGenerationJob = viewModelScope.launch(Dispatchers.IO) {
             repository.insertChatMessage(userMessage)
 
-            val response = llmService.sendChatMessage(
-                node = targetNode,
-                model = activeModelName,
-                prompt = trimmed,
-                history = _chatMessages.value.filter { it.conversationId == currentConvId }
-            )
+            // Overlap LLM generation with TTS: stream tokens and enqueue
+            // completed sentences into a LAN Kokoro session as they arrive,
+            // so audio starts ~1s after the model's first sentence.
+            val lanSession = voiceEngineManager.openLanSpeechSession()
+            val gate = if (lanSession != null) {
+                com.example.voice.SentenceGate(minWords = 3) { s -> lanSession.enqueue(s) }
+            } else null
+            val speechCaption = StringBuilder()
+            var playbackStarted = false
+
+            if (lanSession != null) {
+                Thread {
+                    val ok = lanSession.join()
+                    if (!ok) {
+                        // LAN failed (e.g. server died mid-stream): speak whole text via fallback
+                        voiceEngineManager.speakText(speechCaption.toString())
+                    }
+                }.also { it.isDaemon = true }.start()
+            }
+
+            val history = _chatMessages.value.filter { it.conversationId == currentConvId }
+            val response = if (lanSession != null) {
+                llmService.sendChatMessageStreaming(
+                    node = targetNode,
+                    model = activeModelName,
+                    prompt = trimmed,
+                    history = history
+                ) { token ->
+                    gate?.feed(token)
+                    speechCaption.append(token)
+                    if (!playbackStarted) { playbackStarted = true; voiceEngineManager.setSpeakingState() }
+                    if (speechCaption.length % 120 < token.length) {
+                        voiceEngineManager.setLiveSpeechText(speechCaption.toString())
+                    }
+                }
+            } else {
+                llmService.sendChatMessage(
+                    node = targetNode,
+                    model = activeModelName,
+                    prompt = trimmed,
+                    history = history
+                )
+            }
+
+            if (lanSession != null) {
+                gate?.flush()
+                lanSession.finish()
+                voiceEngineManager.setLiveSpeechText(response.text)
+            }
 
             val assistantMessage = ChatMessage(
                 conversationId = currentConvId,
@@ -1168,8 +1211,10 @@ class TailNodeViewModel(
             _isLlmGenerating.value = false
             llmGenerationJob = null
 
-            // Speak assistant response aloud via on-device TTS
-            voiceEngineManager.speakText(response.text)
+            // Non-LAN paths: speak after full response (system/on-device TTS)
+            if (lanSession == null && !response.isError) {
+                voiceEngineManager.speakText(response.text)
+            }
         }
     }
 
@@ -1288,6 +1333,22 @@ class TailNodeViewModel(
 
             val currentHistory = _hermesMessages.value
 
+            // Voice: stream agent output into a LAN TTS session sentence-by-sentence
+            val voiceOn = voiceEngineManager.canStreamViaLan()
+            val lanSession = if (voiceOn) voiceEngineManager.openLanSpeechSession() else null
+            val hermesGate = if (lanSession != null) {
+                com.example.voice.SentenceGate(minWords = 3) { s -> lanSession.enqueue(s) }
+            } else null
+            var hermesPlaybackStarted = false
+            if (lanSession != null) {
+                Thread {
+                    val ok = lanSession.join()
+                    if (!ok) {
+                        // server died mid-stream — nothing to retry safely; go silent-to-system
+                    }
+                }.also { it.isDaemon = true }.start()
+            }
+
             hermesService.streamAgentChat(
                 node = node,
                 prompt = prompt,
@@ -1298,6 +1359,13 @@ class TailNodeViewModel(
                     if (idx != -1) {
                         cur[idx] = cur[idx].copy(content = cur[idx].content + token)
                         _hermesMessages.value = cur
+                    }
+                    if (hermesGate != null) {
+                        hermesGate.feed(token)
+                        if (!hermesPlaybackStarted) {
+                            hermesPlaybackStarted = true
+                            voiceEngineManager.setSpeakingState()
+                        }
                     }
                 },
                 onThinking = { thinkToken ->
@@ -1318,6 +1386,8 @@ class TailNodeViewModel(
                 },
                 onError = { errorText ->
                     _isHermesGenerating.value = false
+                    hermesGate?.flush()
+                    lanSession?.finish()
                     val errorAssistant = HermesMessage(
                         id = liveAssistantId,
                         nodeId = node.id,

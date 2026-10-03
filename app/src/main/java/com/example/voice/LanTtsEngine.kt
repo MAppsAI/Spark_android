@@ -45,8 +45,8 @@ class LanTtsEngine {
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) { healthy = false; return false }
                 val body = resp.body?.string() ?: return false
-                healthy = body.contains("\"ready\":true")
-                val m = Regex("\"sample_rate\":(\\d+)").find(body)
+                healthy = bool(Regex("\"ready\"\\s*:\\s*true").find(body))
+                val m = Regex("\"sample_rate\"\\s*:\\s*(\\d+)").find(body)
                 m?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }?.let { sampleRate = it }
                 healthy
             }
@@ -57,6 +57,133 @@ class LanTtsEngine {
     }
 
     val isHealthy: Boolean get() = healthy && serverUrl.isNotBlank()
+
+    /**
+     * Opens a streaming session: one AudioTrack for the whole utterance, with
+     * a prefetching fetcher thread so sentence N+1 synthesizes server-side
+     * while sentence N plays. enqueue() sentences as they complete from the
+     * LLM token stream, then finish() and join() on the caller thread.
+     */
+    fun openSession(speed: Double = 1.0): LanTtsSession = LanTtsSession(speed)
+
+    inner class LanTtsSession(private val speed: Double) {
+        private val sentenceQ = java.util.concurrent.LinkedBlockingQueue<String?>()
+        private val pcmQ = java.util.concurrent.LinkedBlockingQueue<ByteArray?>()
+        private val sessionStop = AtomicBoolean(false)
+        @Volatile private var failed = false
+        @Volatile private var anyAudio = false
+        @Volatile private var track: AudioTrack? = null
+        @Volatile private var fetchThread: Thread? = null
+
+        init {
+            if (!isHealthy) failed = true
+        }
+
+        fun enqueue(sentence: String) {
+            if (!sessionStop.get()) sentenceQ.put(sentence)
+        }
+
+        fun finish() {
+            sentenceQ.put(null) // end marker for fetcher
+        }
+
+        fun abort() {
+            sessionStop.set(true)
+            sentenceQ.clear()
+            sentenceQ.put(null)
+            pcmQ.put(null)
+            try { track?.let { if (it.playState == AudioTrack.PLAYSTATE_PLAYING) it.stop() } } catch (_: Throwable) {}
+        }
+
+        /** Blocking play until all queued sentences have played. Call on IO thread. */
+        fun join(): Boolean {
+            if (failed) return false
+            fetchThread = Thread { fetchLoop() }.also { it.isDaemon = true; it.start() }
+
+            val sr = sampleRate.takeIf { it > 0 } ?: 24000
+            val at = try {
+                AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(sr)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
+                    )
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+            } catch (_: Throwable) {
+                failed = true
+                return false
+            }
+            track = at
+            playing = true
+            at.play()
+            val buf = ByteArray(4096)
+            try {
+                while (!sessionStop.get()) {
+                    val pcm = pcmQ.take() ?: break
+                    var off = 0
+                    while (off < pcm.size && !sessionStop.get()) {
+                        val n = minOf(buf.size, pcm.size - off)
+                        at.write(pcm, off, n, AudioTrack.WRITE_BLOCKING)
+                        off += n
+                    }
+                    anyAudio = true
+                }
+                // let the hardware drain queued samples before tearing down
+                if (!sessionStop.get()) {
+                    try { at.stop() } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {
+            } finally {
+                try { if (at.playState == AudioTrack.PLAYSTATE_PLAYING) at.stop() } catch (_: Throwable) {}
+                try { at.release() } catch (_: Throwable) {}
+                if (track === at) track = null
+                playing = false
+            }
+            fetchThread?.join(2000)
+            return !failed && !sessionStop.get() && anyAudio
+        }
+
+        /** Fetch sentences, strip RIFF header, hand PCM to the player queue. */
+        private fun fetchLoop() {
+            try {
+                while (true) {
+                    val sentence = sentenceQ.take() ?: break
+                    if (sessionStop.get()) break
+                    try {
+                        val url = "$serverUrl/tts?text=${URLEncoder.encode(sentence, "UTF-8")}&sid=0&speed=$speed"
+                        val req = Request.Builder().url(url).build()
+                        client.newCall(req).execute().use { resp ->
+                            if (!resp.isSuccessful) { failed = true; return }
+                            val stream = resp.body?.byteStream() ?: return
+                            val all = java.io.ByteArrayOutputStream(1 shl 16)
+                            val chunk = ByteArray(16384)
+                            var n: Int
+                            while (stream.read(chunk).also { n = it } != -1) all.write(chunk, 0, n)
+                            val bytes = all.toByteArray()
+                            val pcm = if (bytes.size > 44 &&
+                                String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF"
+                            ) bytes.copyOfRange(44, bytes.size) else bytes
+                            if (pcm.isNotEmpty()) pcmQ.put(pcm)
+                        }
+                    } catch (_: Throwable) {
+                        failed = true
+                        break
+                    }
+                }
+            } finally {
+                pcmQ.put(null) // end marker for player
+            }
+        }
+    }
 
     /**
      * Blocking streamed speak: writes PCM16 as it arrives from the server into

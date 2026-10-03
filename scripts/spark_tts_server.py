@@ -36,21 +36,57 @@ _TTS = None
 _ARGS = None
 
 
+def sanitize_text(text: str) -> str:
+    """Strip emoji/symbol glyphs so Kokoro doesn't speak their names."""
+    # Emoji blocks: pictographs, emoticons/symbols, transport, supplemental,
+    # flags, plus variation selectors, ZWJ and keycaps.
+    text = re.sub(
+        r"[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF"
+        r"\U0000FE00-\U0000FE0F\U0000200D\U000020E3\U00002B00-\U00002BFF"
+        r"\U00002190-\U000021FF\U00002B50\U00003030\U0000303D\U000000A9\U000000AE]",
+        "", text,
+    )
+    # Kaomoji / ASCII faces: :( :(  xD >:(  etc only when alone-ish — keep it
+    # simple: strip common standalone emoticon tokens.
+    text = re.sub(r"(?<!\w)[:;=8][\-^]?[DdPpXxOo3)(]\w?(?!\w)", "", text)
+    # Collapse leftover whitespace
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r" ?\n ?", "\n", text)
+    return text.strip()
+
+
 def sentence_split(text: str):
-    # Split into speakable sentences; keep short fragments with neighbors.
-    parts = re.split(r"(?<=[.!?;:])\s+", text.strip())
+    # Split into speakable sentences; keep short fragments with neighbours.
+    # (Old version double-spoke the trailing fragment — appended it AND merged
+    # a copy into the previous chunk. Rewritten to emit each fragment once.)
+    parts = [p.strip() for p in re.split(r"(?<=[.!?;:])\s+", text.strip()) if p.strip()]
     out, buf = [], ""
     for p in parts:
-        buf = (buf + " " + p).strip() if buf else p.strip()
+        buf = (buf + " " + p).strip() if buf else p
         if len(buf.split()) >= 6:
             out.append(buf)
             buf = ""
     if buf:
-        (out.append(buf) if out else out.append(buf))
-        if len(buf.split()) < 6 and len(out) > 0:
-            out[-1] = out[-1] + " " + buf
-            out.pop() if False else None
+        if out and len(buf.split()) < 6:
+            out[-1] = out[-1] + " " + buf  # merge short tail into last chunk
+        else:
+            out.append(buf)
     return out or ([text.strip()] if text.strip() else [])
+
+
+def _smooth(audio, rate):
+    """Fade edges to zero (~3ms) so back-to-back chunks don't click."""
+    n = max(1, int(rate * 0.003))
+    x = np.asarray(audio, dtype=np.float32).copy()
+    if x.size >= 2 * n:
+        ramp = np.linspace(0.0, 1.0, n, dtype=np.float32)
+        x[:n] *= ramp
+        x[-n:] *= ramp[::-1]
+    return x
+
+
+def _silence(n_frames):
+    return b"\x00" * (n_frames * 2)
 
 
 def wav_header(n_frames: int, rate: int) -> bytes:
@@ -87,16 +123,19 @@ class Handler(BaseHTTPRequestHandler):
                 sr = _TTS.sample_rate if ready else 0
                 sp = _TTS.num_speakers if ready else 0
             self._send(200, "application/json", json.dumps(
-                {"ready": ready, "sample_rate": sr, "speakers": sp}).encode())
+                {"ready": ready, "sample_rate": sr, "speakers": sp},
+                separators=(",", ":")).encode())
             return
 
         if url.path == "/tts":
             q = parse_qs(url.query)
-            text = (q.get("text", [""])[0] or "").strip()
+            text = sanitize_text(q.get("text", [""])[0] or "")
             sid = int(q.get("sid", ["0"])[0])
             speed = float(q.get("speed", ["1.0"])[0])
             if not text:
-                self._send(400, "text/plain", b"missing text")
+                # nothing speakable (e.g. emoji-only) — return valid silent wav
+                # instead of 400 so the app doesn't fall back to another engine.
+                self._send(200, "audio/wav", wav_header(0, _TTS.sample_rate if _TTS else 24000))
                 return
             with _lock:
                 if _TTS is None:
@@ -112,9 +151,15 @@ class Handler(BaseHTTPRequestHandler):
                     first = True
                     for sent in sentence_split(text):
                         audio = _TTS.generate(sent, sid=sid, speed=speed)
-                        chunk = pcm16(audio.samples)
+                        chunk = pcm16(_smooth(audio.samples, rate))
                         if not chunk:
                             continue
+                        if not first:
+                            # brief inter-sentence gap so chunk seams never click
+                            gap = _silence(int(rate * 0.05))
+                            self.wfile.write(b"%X\r\n" % len(gap))
+                            self.wfile.write(gap)
+                            self.wfile.write(b"\r\n")
                         if first:
                             # RIFF header rides with the first chunk; clients
                             # skip 44 bytes and stream the rest as raw PCM16.

@@ -588,6 +588,51 @@ class VoiceEngineManager(
 
     // ───────────────────────── speaking ─────────────────────────
 
+    /** True when the LAN Kokoro server is the selected, healthy TTS engine. */
+    fun canStreamViaLan(): Boolean =
+        selectedTtsModel?.id == "tts_lan" && lanEngine.isHealthy
+
+    @Volatile private var activeLanSession: LanTtsEngine.LanTtsSession? = null
+
+    /** Public markdown scrubber for feeding gate sentences from the ViewModel. */
+    fun cleanForSpeech(raw: String): String = cleanTextForSpeech(raw)
+
+    fun setSpeakingState() { withMain { _voiceState.value = VoiceState.SPEAKING } }
+
+    /** Update the on-screen live speech caption while tokens stream in. */
+    fun setLiveSpeechText(text: String) { withMain { _liveAiSpeechText.value = text } }
+
+    /**
+     * Opens a streaming LAN session (no state change — caller flips to
+     * SPEAKING when the first audio actually arrives). Returns null when the
+     * LAN engine isn't usable. Caller must run session.join() concurrently
+     * with the token feed, then finish() it when the LLM stream ends.
+     */
+    fun openLanSpeechSession(): LanTtsEngine.LanTtsSession? {
+        if (!canStreamViaLan()) return null
+        return lanEngine.openSession().also { activeLanSession = it }
+    }
+
+    /**
+     * Speaks complete text over LAN using the session pipeline (sentence gate
+     * + prefetching AudioTrack). Blocking — call on IO dispatcher.
+     */
+    fun speakTextStreaming(text: String): Boolean {
+        val session = openLanSpeechSession() ?: return false
+        activeLanSession = session
+        val clean = cleanTextForSpeech(text)
+        setSpeakingState()
+        if (clean.isNotBlank()) _liveAiSpeechText.value = clean
+        val gate = SentenceGate(minWords = 3) { s -> session.enqueue(s) }
+        gate.feed(clean)
+        gate.flush()
+        session.finish()
+        val r = session.join()
+        if (activeLanSession === session) activeLanSession = null
+        withMain { _voiceState.value = VoiceState.IDLE }
+        return r
+    }
+
     /**
      * Speaks with the SELECTED engine: Kokoro neural voice when downloaded,
      * loaded and selected — otherwise the system TextToSpeech.
@@ -601,19 +646,28 @@ class VoiceEngineManager(
 
         val useLan = selectedTtsModel?.id == "tts_lan" && lanEngine.isHealthy
         val useKokoro = selectedTtsModel?.id == "tts_kokoro" && kokoroEngine.isReady
-        if (useLan || useKokoro) {
+        if (useLan) {
             scope.launch(Dispatchers.Default) {
-                val ok = if (useLan) lanEngine.speakBlocking(clean) else kokoroEngine.speakBlocking(clean)
+                val ok = speakTextStreaming(clean)
                 withMain { _voiceState.value = VoiceState.IDLE }
-                // LAN hiccup mid-playback or dead server -> fall back to on-device Kokoro, then system
+                // LAN dead mid-playback -> fall back to on-device Kokoro, then system
                 if (!ok) {
-                    if (useLan && kokoroEngine.isReady) {
-                        val ok2 = kokoroEngine.speakBlocking(clean)
-                        withMain { if (!ok2) {} }
+                    if (kokoroEngine.isReady) {
+                        kokoroEngine.speakBlocking(clean)
+                    } else {
+                        speakViaSystem(clean)
                     }
-                    if (!(useLan && kokoroEngine.isReady)) speakViaSystem(clean)
                     withMain { _voiceState.value = VoiceState.IDLE }
                 }
+            }
+            return
+        }
+        if (useKokoro) {
+            scope.launch(Dispatchers.Default) {
+                val ok = kokoroEngine.speakBlocking(clean)
+                withMain { _voiceState.value = VoiceState.IDLE }
+                if (!ok) speakViaSystem(clean)
+                withMain { _voiceState.value = VoiceState.IDLE }
             }
             return
         }
@@ -635,6 +689,8 @@ class VoiceEngineManager(
             textToSpeech?.stop()
         }
         kokoroEngine.stopPlayback()
+        activeLanSession?.abort()
+        activeLanSession = null
         lanEngine.stop()
         if (_voiceState.value == VoiceState.SPEAKING) {
             _voiceState.value = VoiceState.IDLE

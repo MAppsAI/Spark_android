@@ -460,6 +460,162 @@ class LocalLlmService {
         )
     }
 
+    /**
+     * Streaming variant: SSE (OpenAI-compatible) or NDJSON (Ollama) token
+     * stream. onToken fires per token as it arrives so callers can begin TTS
+     * before generation finishes. Falls back to non-streaming on protocol
+     * errors that yield no text at all.
+     */
+    suspend fun sendChatMessageStreaming(
+        node: TailNode,
+        model: String,
+        prompt: String,
+        history: List<ChatMessage> = emptyList(),
+        onToken: (String) -> Unit
+    ): LlmResponse = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        val baseUrl = node.getEffectiveLlmBaseUrl()
+        val isOllama = node.llmType.uppercase() == "OLLAMA"
+
+        val endpointUrl = if (isOllama) {
+            if (baseUrl.endsWith("/api")) "$baseUrl/chat" else "$baseUrl/api/chat"
+        } else {
+            if (baseUrl.endsWith("/v1")) "$baseUrl/chat/completions" else "$baseUrl/v1/chat/completions"
+        }
+
+        val messagesArray = JSONArray()
+        for (msg in history.takeLast(16)) {
+            if (msg.role in listOf("user", "assistant", "system") && msg.content.isNotBlank()) {
+                messagesArray.put(JSONObject().apply {
+                    put("role", msg.role)
+                    put("content", msg.content.trim())
+                })
+            }
+        }
+        if (prompt.isNotBlank()) {
+            messagesArray.put(JSONObject().apply {
+                put("role", "user")
+                put("content", prompt.trim())
+            })
+        }
+
+        val jsonPayload = if (isOllama) {
+            JSONObject().apply {
+                put("model", model.ifBlank { node.llmDefaultModel })
+                put("messages", messagesArray)
+                put("stream", true)
+            }
+        } else {
+            val effectiveModel = model.ifBlank {
+                node.hermesModel.ifBlank {
+                    node.llmDefaultModel.ifBlank {
+                        if (node.name.contains("spark", true) || baseUrl.contains("hermes", true)) "hermes-agent" else "default"
+                    }
+                }
+            }
+            JSONObject().apply {
+                put("model", effectiveModel)
+                put("messages", messagesArray)
+                put("stream", true)
+                put("temperature", 0.7)
+            }
+        }
+
+        val requestBuilder = Request.Builder().url(endpointUrl)
+            .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
+            .addHeader("Accept", "text/event-stream, application/x-ndjson, application/json")
+        val apiKey = node.llmApiKey.ifBlank { node.hermesApiKey }.trim()
+        if (apiKey.isNotBlank()) requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+
+        val content = StringBuilder()
+        val call = client.newCall(requestBuilder.build())
+        activeCall.set(call)
+        try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext LlmResponse(
+                        text = "",
+                        stats = "HTTP ${response.code}",
+                        isLiveConnection = false,
+                        isError = true,
+                        errorDetails = "HTTP ${response.code} from $endpointUrl"
+                    )
+                }
+                val src = response.body?.source()
+                    ?: return@withContext LlmResponse(
+                        text = "", stats = "Empty", isLiveConnection = false,
+                        isError = true, errorDetails = "no body"
+                    )
+                while (true) {
+                    val line = src.readUtf8Line() ?: break
+                    val trimmed = line.trim()
+                    if (trimmed.isEmpty()) continue
+                    val payload = if (trimmed.startsWith("data:")) {
+                        val d = trimmed.removePrefix("data:").trim()
+                        if (d == "[DONE]") break
+                        d
+                    } else trimmed
+                    if (!payload.startsWith("{")) continue
+                    try {
+                        val obj = JSONObject(payload)
+                        if (isOllama) {
+                            val tok = obj.optString("response")
+                            if (tok.isNotEmpty()) { content.append(tok); onToken(tok) }
+                            if (obj.optBoolean("done", false)) break
+                        } else {
+                            val choices = obj.optJSONArray("choices")
+                            if (choices != null && choices.length() > 0) {
+                                val ch = choices.getJSONObject(0)
+                                val delta = ch.optJSONObject("delta")
+                                val msg = ch.optJSONObject("message")
+                                val tok = delta?.optString("content").orEmpty()
+                                    .ifEmpty { msg?.optString("content").orEmpty() }
+                                    .ifEmpty { ch.optString("text") }
+                                if (tok.isNotEmpty()) { content.append(tok); onToken(tok) }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (e: Exception) {
+            if (content.isNotEmpty()) {
+                // partial generation with a mid-stream drop — still usable
+                return@withContext LlmResponse(
+                    text = content.toString(),
+                    stats = "stream ${System.currentTimeMillis() - startTime}ms • ${node.name}",
+                    isLiveConnection = true,
+                    isError = false
+                )
+            }
+            val detail = when (e) {
+                is java.net.ConnectException -> "Connection refused at $endpointUrl."
+                is java.net.SocketTimeoutException -> "Stream timed out on ${node.name}."
+                else -> e.localizedMessage ?: "Network error"
+            }
+            return@withContext LlmResponse(
+                text = "⚠️ Connection Failed to $endpointUrl\n\n$detail",
+                stats = "Failed",
+                isLiveConnection = false,
+                isError = true,
+                errorDetails = detail
+            )
+        } finally {
+            activeCall.compareAndSet(call, null)
+        }
+
+        val elapsed = System.currentTimeMillis() - startTime
+        if (content.isEmpty()) {
+            // server ignored stream=true or returned nothing — one non-stream retry
+            return@withContext sendChatMessage(node, model, prompt, history)
+        }
+        LlmResponse(
+            text = content.toString(),
+            stats = "stream ${elapsed}ms • ${node.name}",
+            isLiveConnection = true,
+            isError = false
+        )
+    }
+
     private fun sendOllamaGenerateFallback(
         node: TailNode,
         model: String,
