@@ -1093,6 +1093,7 @@ fun LlmChatScreen(
     }
 
     // Ambient Voice Mode (On-Device STT/TTS & Cross-Machine LLM)
+    var conversationMode by remember { mutableStateOf(viewModel.isConversationMode()) }
     if (isVoiceModeOpen) {
         VoiceModeDialog(
             voiceState = voiceState,
@@ -1110,6 +1111,12 @@ fun LlmChatScreen(
             onStopSpeaking = { viewModel.stopVoiceSpeaking() },
             onReplaySpeech = { viewModel.replayLastSpeech() },
             onClearTranscripts = { viewModel.clearLiveTranscripts() },
+            conversationMode = conversationMode,
+            onToggleConversation = {
+                viewModel.setConversationMode(it)
+                conversationMode = it
+                if (it && voiceState == VoiceState.IDLE) viewModel.startVoiceListening()
+            },
             onOpenModelManager = { viewModel.openVoiceModelsSheet() },
             onDismiss = { viewModel.closeVoiceMode() }
         )

@@ -126,6 +126,8 @@ fun VoiceModeDialog(
     onStopSpeaking: () -> Unit,
     onReplaySpeech: () -> Unit = {},
     onClearTranscripts: () -> Unit = {},
+    conversationMode: Boolean = false,
+    onToggleConversation: (Boolean) -> Unit = {},
     onOpenModelManager: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -661,6 +663,38 @@ fun VoiceModeDialog(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         Row(horizontalArrangement = Arrangement.Center) {
+                            // Hands-free conversation toggle
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(
+                                        if (conversationMode) CyberCyan.copy(alpha = 0.18f)
+                                        else DarkSurfaceElevated
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (conversationMode) CyberCyan.copy(alpha = 0.6f) else DarkBorder,
+                                        RoundedCornerShape(20.dp)
+                                    )
+                                    .clickable { onToggleConversation(!conversationMode) }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.GraphicEq,
+                                    contentDescription = null,
+                                    tint = if (conversationMode) CyberCyan else TextMuted,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    "Hands-free",
+                                    fontSize = 11.sp,
+                                    color = if (conversationMode) CyberCyan else TextSecondary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
                             if (voiceState == VoiceState.SPEAKING) {
                                 Row(
                                     modifier = Modifier

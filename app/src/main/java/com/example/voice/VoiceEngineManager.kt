@@ -460,10 +460,12 @@ class VoiceEngineManager(
 
                         override fun onDone(utteranceId: String?) {
                             _voiceState.value = VoiceState.IDLE
+                            if (isConversationEnabled()) scheduleAutoListen()
                         }
 
                         override fun onError(utteranceId: String?) {
                             _voiceState.value = VoiceState.IDLE
+                            if (isConversationEnabled()) scheduleAutoListen()
                         }
                     })
                 }
@@ -503,19 +505,33 @@ class VoiceEngineManager(
                         _rmsDecibels.value = 0f
                         voskEngine.stop()
                         if (text.isNotBlank()) {
+                            errorStreak = 0
                             _voiceState.value = VoiceState.THINKING
                             onTranscriptionComplete(text)
                         } else {
                             _voiceState.value = VoiceState.IDLE
+                            // silence in conversation mode: try again, cap the loop
+                            if (isConversationEnabled() && errorStreak < 3) scheduleAutoListen()
+                            else if (isConversationEnabled()) endConversation()
                         }
                     },
                     onError = { _ ->
                         _rmsDecibels.value = 0f
                         voskEngine.stop()
                         _voiceState.value = VoiceState.IDLE
+                        if (isConversationEnabled() && errorStreak < 3) {
+                            errorStreak++
+                            scheduleAutoListen()
+                        } else if (isConversationEnabled()) endConversation()
                     }
                 )
-                if (!started) _voiceState.value = VoiceState.IDLE
+                if (!started) {
+                    _voiceState.value = VoiceState.IDLE
+                    if (isConversationEnabled() && errorStreak < 3) {
+                        errorStreak++
+                        scheduleAutoListen()
+                    }
+                }
             }
             return
         }
@@ -549,6 +565,15 @@ class VoiceEngineManager(
                         override fun onError(error: Int) {
                             _voiceState.value = VoiceState.IDLE
                             _rmsDecibels.value = 0f
+                            // NO_ERROR / RESTART are the recognizer's natural end-of-utterance
+                            // path in conversation mode — re-arm like a proper assistant.
+                            if (isConversationEnabled() &&
+                                (error == SpeechRecognizer.ERROR_NO_ERROR || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_CLIENT)) {
+                                if (errorStreak < 3) scheduleAutoListen() else endConversation()
+                            } else if (isConversationEnabled() && errorStreak < 3) {
+                                errorStreak++
+                                scheduleAutoListen()
+                            }
                         }
 
                         override fun onResults(results: Bundle?) {
@@ -558,9 +583,12 @@ class VoiceEngineManager(
                             _voiceState.value = VoiceState.THINKING
                             _rmsDecibels.value = 0f
                             if (text.isNotBlank()) {
+                                errorStreak = 0
                                 onTranscriptionComplete(text)
                             } else {
                                 _voiceState.value = VoiceState.IDLE
+                                if (isConversationEnabled() && errorStreak < 3) scheduleAutoListen()
+                                else if (isConversationEnabled()) endConversation()
                             }
                         }
 
@@ -600,6 +628,115 @@ class VoiceEngineManager(
 
     // ───────────────────────── speaking ─────────────────────────
 
+    // ───────────────────── conversation mode ─────────────────────
+    //
+    // When enabled, the assistant loops: listen → transcribe → LLM → speak →
+    // listen again — no mic taps. Talking while it speaks barges in: a raw
+    // AudioRecord energy monitor (VOICE_COMMUNICATION = platform AEC) stops
+    // playback and hands the mic to the recognizer.
+
+    @Volatile private var conversationActive = false
+    private var onAutoListen: (() -> Unit)? = null
+    private var onBarge: (() -> Unit)? = null
+    @Volatile private var bargeRunning = false
+    private var bargeThread: Thread? = null
+    @Volatile private var bargeRecord: android.media.AudioRecord? = null
+    private var errorStreak = 0
+
+    fun isConversationEnabled(): Boolean = prefs.getBoolean("conversation_mode", false)
+    fun setConversationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("conversation_mode", enabled).apply()
+    }
+
+    fun startConversation(onAutoListen: () -> Unit, onBarge: () -> Unit) {
+        this.onAutoListen = onAutoListen
+        this.onBarge = onBarge
+        conversationActive = true
+        errorStreak = 0
+    }
+
+    fun endConversation() {
+        conversationActive = false
+        onAutoListen = null
+        onBarge = null
+        stopBargeMonitor()
+    }
+
+    /** Called by ViewModel when a turn ends without speech (e.g. error bubble). */
+    fun notifyTurnComplete() = scheduleAutoListen()
+
+    private fun scheduleAutoListen() {
+        if (!conversationActive || !isConversationEnabled()) return
+        val cb = onAutoListen ?: return
+        mainHandler.postDelayed({ if (conversationActive && isConversationEnabled()) cb() }, 550)
+    }
+
+    private fun startBargeMonitor() {
+        if (!conversationActive || bargeRunning) return
+        bargeRunning = true
+        bargeThread = Thread {
+            try {
+                val sr = 16000
+                val minBuf = android.media.AudioRecord.getMinBufferSize(
+                    sr,
+                    android.media.AudioFormat.CHANNEL_IN_MONO,
+                    android.media.AudioFormat.ENCODING_PCM_16BIT
+                )
+                if (minBuf <= 0) return@Thread
+                val rec = try {
+                    android.media.AudioRecord(
+                        android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                        sr,
+                        android.media.AudioFormat.CHANNEL_IN_MONO,
+                        android.media.AudioFormat.ENCODING_PCM_16BIT,
+                        maxOf(minBuf * 2, 4096)
+                    )
+                } catch (_: Throwable) { null } ?: return@Thread
+                if (rec.state != android.media.AudioRecord.STATE_INITIALIZED) {
+                    try { rec.release() } catch (_: Throwable) {}
+                    return@Thread
+                }
+                bargeRecord = rec
+                val buf = ShortArray(1024)
+                var voiced = 0
+                rec.startRecording()
+                while (bargeRunning) {
+                    val n = rec.read(buf, 0, buf.size)
+                    if (n <= 0) break
+                    var sum = 0.0
+                    for (i in 0 until n) sum += buf[i].toDouble() * buf[i]
+                    val rms = kotlin.math.sqrt(sum / n)
+                    if (rms > 850.0) voiced++ else voiced = 0
+                    if (voiced >= 5) { // ~320ms of sustained speech over our own voice
+                        bargeRunning = false
+                        val cb = onBarge
+                        mainHandler.post {
+                            stopBargeMonitor()
+                            cb?.invoke()
+                        }
+                        break
+                    }
+                }
+            } catch (_: Throwable) {
+            } finally {
+                bargeRunning = false
+                val r = bargeRecord
+                bargeRecord = null
+                try { r?.stop() } catch (_: Throwable) {}
+                try { r?.release() } catch (_: Throwable) {}
+            }
+        }.also { it.isDaemon = true; it.uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, _ -> }; it.start() }
+    }
+
+    private fun stopBargeMonitor() {
+        bargeRunning = false
+        val r = bargeRecord
+        bargeRecord = null
+        try { r?.stop() } catch (_: Throwable) {}
+        try { r?.release() } catch (_: Throwable) {}
+        bargeThread = null
+    }
+
     /** True when the LAN Kokoro server is the selected, healthy TTS engine. */
     fun canStreamViaLan(): Boolean =
         selectedTtsModel?.id == "tts_lan" && lanEngine.isHealthy
@@ -609,7 +746,10 @@ class VoiceEngineManager(
     /** Public markdown scrubber for feeding gate sentences from the ViewModel. */
     fun cleanForSpeech(raw: String): String = cleanTextForSpeech(raw)
 
-    fun setSpeakingState() { withMain { _voiceState.value = VoiceState.SPEAKING } }
+    fun setSpeakingState() {
+        withMain { _voiceState.value = VoiceState.SPEAKING }
+        if (isConversationEnabled()) startBargeMonitor()
+    }
 
     /** Update the on-screen live speech caption while tokens stream in. */
     fun setLiveSpeechText(text: String) { withMain { _liveAiSpeechText.value = text } }
@@ -642,6 +782,7 @@ class VoiceEngineManager(
         val r = session.join()
         if (activeLanSession === session) activeLanSession = null
         withMain { _voiceState.value = VoiceState.IDLE }
+        if (isConversationEnabled()) scheduleAutoListen()
         return r
     }
 
@@ -666,10 +807,11 @@ class VoiceEngineManager(
                 if (!ok) {
                     if (kokoroEngine.isReady) {
                         kokoroEngine.speakBlocking(clean)
+                        withMain { _voiceState.value = VoiceState.IDLE }
+                        if (isConversationEnabled()) scheduleAutoListen()
                     } else {
                         speakViaSystem(clean)
                     }
-                    withMain { _voiceState.value = VoiceState.IDLE }
                 }
             }
             return
@@ -679,7 +821,8 @@ class VoiceEngineManager(
                 val ok = kokoroEngine.speakBlocking(clean)
                 withMain { _voiceState.value = VoiceState.IDLE }
                 if (!ok) speakViaSystem(clean)
-                withMain { _voiceState.value = VoiceState.IDLE }
+                else withMain { _voiceState.value = VoiceState.IDLE }
+                if (ok && isConversationEnabled()) scheduleAutoListen()
             }
             return
         }
@@ -704,6 +847,7 @@ class VoiceEngineManager(
         activeLanSession?.abort()
         activeLanSession = null
         lanEngine.stop()
+        stopBargeMonitor()
         if (_voiceState.value == VoiceState.SPEAKING) {
             _voiceState.value = VoiceState.IDLE
         }

@@ -1065,14 +1065,30 @@ class TailNodeViewModel(
     // Ambient Voice Mode Control Methods
     fun openVoiceMode() {
         _isVoiceModeOpen.value = true
+        voiceEngineManager.startConversation(
+            onAutoListen = { startVoiceListening() },
+            onBarge = {
+                // User talked over the assistant: kill playback + generation, listen.
+                stopVoiceSpeaking()
+                llmService.cancelActiveCall()
+                llmGenerationJob?.cancel()
+                llmGenerationJob = null
+                _isLlmGenerating.value = false
+                startVoiceListening()
+            }
+        )
         startVoiceListening()
     }
 
     fun closeVoiceMode() {
         _isVoiceModeOpen.value = false
+        voiceEngineManager.endConversation()
         stopVoiceSpeaking()
         stopVoiceListening()
     }
+
+    fun isConversationMode(): Boolean = voiceEngineManager.isConversationEnabled()
+    fun setConversationMode(enabled: Boolean) = voiceEngineManager.setConversationEnabled(enabled)
 
     fun openVoiceModelsSheet() {
         _isVoiceModelsSheetOpen.value = true
@@ -1168,9 +1184,10 @@ class TailNodeViewModel(
                 Thread {
                     try {
                         val ok = lanSession.join()
-                        if (!ok) {
-                            // LAN failed (e.g. server died mid-stream): speak whole text via fallback
-                            voiceEngineManager.speakText(speechCaption.toString())
+                        when {
+                            lanSession.isAborted -> { /* barge-in: stay quiet */ }
+                            ok -> voiceEngineManager.notifyTurnComplete()
+                            else -> voiceEngineManager.speakText(speechCaption.toString())
                         }
                     } catch (_: Throwable) {}
                 }.also { it.isDaemon = true; it.uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, _ -> }; it.start() }

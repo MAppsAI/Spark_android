@@ -73,6 +73,8 @@ class LanTtsEngine {
         private val pcmQ = java.util.concurrent.LinkedBlockingQueue<Any>()
         private val sessionStop = AtomicBoolean(false)
         @Volatile private var failed = false
+        @Volatile private var aborted = false
+        val isAborted: Boolean get() = aborted
         @Volatile private var anyAudio = false
         @Volatile private var track: AudioTrack? = null
         @Volatile private var fetchThread: Thread? = null
@@ -90,6 +92,7 @@ class LanTtsEngine {
         }
 
         fun abort() {
+            aborted = true
             sessionStop.set(true)
             sentenceQ.clear()
             sentenceQ.put(QUEUE_END)
