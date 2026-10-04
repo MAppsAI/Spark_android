@@ -565,10 +565,10 @@ class VoiceEngineManager(
                         override fun onError(error: Int) {
                             _voiceState.value = VoiceState.IDLE
                             _rmsDecibels.value = 0f
-                            // NO_ERROR / RESTART are the recognizer's natural end-of-utterance
-                            // path in conversation mode — re-arm like a proper assistant.
+                            // RESTART/TIMEOUT/CLIENT are the recognizer's natural
+                            // end-of-utterance path in conversation mode — re-arm.
                             if (isConversationEnabled() &&
-                                (error == SpeechRecognizer.ERROR_NO_ERROR || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_CLIENT)) {
+                                (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_CLIENT)) {
                                 if (errorStreak < 3) scheduleAutoListen() else endConversation()
                             } else if (isConversationEnabled() && errorStreak < 3) {
                                 errorStreak++
