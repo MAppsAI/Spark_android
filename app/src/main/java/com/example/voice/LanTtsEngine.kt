@@ -130,6 +130,10 @@ class LanTtsEngine {
                             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                             .build()
                     )
+                    .setBufferSizeInBytes(
+                        (AudioTrack.getMinBufferSize(sr, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT) * 2)
+                            .coerceAtLeast(8192)
+                    )
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build()
             } catch (_: Throwable) {
@@ -194,7 +198,10 @@ class LanTtsEngine {
                             // RIFF header which we drop.
                             val chunk = ByteArray(16384)
                             var headerLeft = 44
-                            var first = true
+                            var leftover: ByteArray? = null // odd-byte carry:
+                            // HTTP reads may split a 16-bit sample across two
+                            // reads; writing odd byte counts misaligns the
+                            // stream and plays as white noise until re-aligned.
                             while (!sessionStop.get()) {
                                 val n = stream.read(chunk)
                                 if (n == -1) break
@@ -207,8 +214,13 @@ class LanTtsEngine {
                                     len -= skip
                                 }
                                 if (len > 0) {
-                                    pcmQ.put(chunk.copyOfRange(off, off + len))
-                                    if (first) first = false
+                                    var data = chunk.copyOfRange(off, off + len)
+                                    leftover?.let { data = it + data; leftover = null }
+                                    if (data.size % 2 != 0) {
+                                        leftover = data.copyOfRange(data.size - 1, data.size)
+                                        data = data.copyOfRange(0, data.size - 1)
+                                    }
+                                    if (data.isNotEmpty()) pcmQ.put(data)
                                 }
                             }
                         }
@@ -278,11 +290,18 @@ class LanTtsEngine {
         playing = true
         track.play()
         val buf = ByteArray(4096)
+        var carry: ByteArray? = null
         try {
             while (!stopFlag.get()) {
                 val n = input.read(buf)
                 if (n == -1) break
-                if (n > 1) track.write(buf, 0, n - (n % 2), AudioTrack.WRITE_BLOCKING)
+                var data = buf.copyOfRange(0, n)
+                carry?.let { data = it + data; carry = null }
+                if (data.size % 2 != 0) {
+                    carry = data.copyOfRange(data.size - 1, data.size)
+                    data = data.copyOfRange(0, data.size - 1)
+                }
+                if (data.isNotEmpty()) track.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
             }
         } catch (_: Throwable) {
         } finally {

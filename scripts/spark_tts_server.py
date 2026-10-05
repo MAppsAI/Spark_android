@@ -100,7 +100,10 @@ def wav_header(n_frames: int, rate: int) -> bytes:
 
 
 def pcm16(samples) -> bytes:
-    x = np.clip(np.asarray(samples, dtype=np.float32), -1.0, 1.0)
+    # nan_to_num: Kokoro occasionally emits NaN/inf frames; astype(i2) on those
+    # yields garbage samples that play as audible white-noise bursts.
+    x = np.nan_to_num(np.asarray(samples, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    x = np.clip(x, -1.0, 1.0)
     return (x * 32767.0).astype("<i2").tobytes()
 
 

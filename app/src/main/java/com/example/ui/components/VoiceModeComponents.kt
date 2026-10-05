@@ -7,6 +7,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.DisposableEffect
+import android.view.WindowManager
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -134,6 +137,15 @@ fun VoiceModeDialog(
     onDismiss: () -> Unit
 ) {
     var isLlmDropdownOpen by remember { mutableStateOf(false) }
+
+    // Keep the screen awake while the voice overlay is open so hands-free
+    // conversation keeps working without the phone having to stay unlocked
+    // via system settings; released automatically when the sheet closes.
+    val keepAwakeView = LocalView.current
+    DisposableEffect(Unit) {
+        keepAwakeView.keepScreenOn = true
+        onDispose { keepAwakeView.keepScreenOn = false }
+    }
 
     // Pulsing orb animation
     val infiniteTransition = rememberInfiniteTransition(label = "orb_pulse")
