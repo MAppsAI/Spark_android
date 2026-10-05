@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.SettingsVoice
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
@@ -129,6 +130,7 @@ fun VoiceModeDialog(
     conversationMode: Boolean = false,
     onToggleConversation: (Boolean) -> Unit = {},
     onOpenModelManager: () -> Unit,
+    onOpenTtsSettings: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var isLlmDropdownOpen by remember { mutableStateOf(false) }
@@ -256,6 +258,24 @@ fun VoiceModeDialog(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // TTS tuning sheet
+                        IconButton(
+                            onClick = onOpenTtsSettings,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(DarkSurfaceElevated)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Voice settings",
+                                tint = CyberCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
                         // On-Device STT / TTS Models Manager Button
                         IconButton(
                             onClick = onOpenModelManager,
@@ -782,6 +802,130 @@ private fun VoiceParticleField(
                 radius = r * 2.2f,
                 center = Offset(cx, y)
             )
+        }
+    }
+}
+
+/**
+ * Bottom Sheet for TTS tuning: voice character (speed/pitch/speaker),
+ * barge-in sensitivity and hands-free timing. All values persist via prefs.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TtsSettingsSheet(
+    speed: Float,
+    pitch: Float,
+    speakerId: Int,
+    maxSpeaker: Int,
+    bargeEnabled: Boolean,
+    bargeThreshold: Float,
+    bargeWindowMs: Int,
+    autoListenDelayMs: Int,
+    onSpeed: (Float) -> Unit,
+    onPitch: (Float) -> Unit,
+    onSpeaker: (Int) -> Unit,
+    onBargeEnabled: (Boolean) -> Unit,
+    onBargeThreshold: (Float) -> Unit,
+    onBargeWindowMs: (Int) -> Unit,
+    onAutoListenDelayMs: (Int) -> Unit,
+    onPreview: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    fun slider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float, fmt: (Float) -> String, onChange: (Float) -> Unit) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(label, fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                Text(fmt(value), fontSize = 12.sp, color = CyberCyan, fontFamily = FontFamily.Monospace)
+            }
+            androidx.compose.material3.Slider(
+                value = value,
+                onValueChange = onChange,
+                valueRange = range,
+                steps = maxOf(((range.endInclusive - range.start) / step).toInt() - 1, 0),
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    thumbColor = CyberCyan,
+                    activeTrackColor = CyberCyan,
+                    inactiveTrackColor = DarkBorder
+                )
+            )
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = DarkSurface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 28.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Voice settings", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("VOICE", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            slider("Speed", speed, 0.5f..2.0f, 0.05f, { String.format(java.util.Locale.US, "%.2f×") }, onSpeed)
+            slider("Pitch", pitch, 0.5f..2.0f, 0.05f, { String.format(java.util.Locale.US, "%.2f", it) }, onPitch)
+            slider("Speaker (Kokoro voice)", speakerId.toFloat(), 0f..maxSpeaker.toFloat(), 1f, { "sid ${it.toInt()}" }, { onSpeaker(it.toInt()) })
+            Text(
+                "Speed & speaker apply to the LAN Kokoro server; pitch applies to the system voice.",
+                fontSize = 10.sp,
+                color = TextMuted
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Button(
+                onClick = onPreview,
+                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = CyberCyan),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.height(40.dp)
+            ) { Text("Preview voice", fontSize = 12.sp) }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("INTERRUPTION (barge-in)", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Interrupt while Spark speaks", fontSize = 12.sp, color = TextSecondary)
+                androidx.compose.material3.Switch(
+                    checked = bargeEnabled,
+                    onCheckedChange = onBargeEnabled,
+                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                        thumbColor = CyberCyan,
+                        checkedTrackColor = CyberCyan.copy(alpha = 0.35f),
+                        uncheckedTrackColor = DarkSurfaceVariant
+                    )
+                )
+            }
+            if (bargeEnabled) {
+                slider("Mic sensitivity (lower = more sensitive)", bargeThreshold, 150f..3000f, 50f, { it.toInt().toString() }, onBargeThreshold)
+                slider("Speech hold (ms)", bargeWindowMs.toFloat(), 120f..800f, 20f, { "${it.toInt()} ms" }, { onBargeWindowMs(it.toInt()) })
+                Text(
+                    "Interrupts itself talking? Raise sensitivity number. Doesn't hear you? Lower it or raise hold.",
+                    fontSize = 10.sp,
+                    color = TextMuted
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("HANDS-FREE", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+            slider("Re-listen delay after speaking", autoListenDelayMs.toFloat(), 0f..2000f, 100f, { "${it.toInt()} ms" }, { onAutoListenDelayMs(it.toInt()) })
         }
     }
 }

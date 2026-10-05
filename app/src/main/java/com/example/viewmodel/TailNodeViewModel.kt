@@ -1090,9 +1090,34 @@ class TailNodeViewModel(
     fun isConversationMode(): Boolean = voiceEngineManager.isConversationEnabled()
     fun setConversationMode(enabled: Boolean) = voiceEngineManager.setConversationEnabled(enabled)
 
+    // TTS tuning exposed to the settings sheet
+    fun getTtsSpeed(): Float = voiceEngineManager.ttsSpeed
+    fun setTtsSpeed(v: Float) { voiceEngineManager.ttsSpeed = v }
+    fun getTtsPitch(): Float = voiceEngineManager.ttsPitch
+    fun setTtsPitch(v: Float) { voiceEngineManager.ttsPitch = v }
+    fun getTtsSpeakerId(): Int = voiceEngineManager.ttsSpeakerId
+    fun setTtsSpeakerId(v: Int) { voiceEngineManager.ttsSpeakerId = v }
+    fun getBargeThreshold(): Float = voiceEngineManager.bargeThreshold
+    fun setBargeThreshold(v: Float) { voiceEngineManager.bargeThreshold = v }
+    fun getBargeWindowMs(): Int = voiceEngineManager.bargeWindowMs
+    fun setBargeWindowMs(v: Int) { voiceEngineManager.bargeWindowMs = v }
+    fun getAutoListenDelayMs(): Int = voiceEngineManager.autoListenDelayMs
+    fun setAutoListenDelayMs(v: Int) { voiceEngineManager.autoListenDelayMs = v }
+    fun isBargeEnabled(): Boolean = voiceEngineManager.isBargeEnabled()
+    fun setBargeEnabled(enabled: Boolean) = voiceEngineManager.setBargeEnabled(enabled)
+
+    fun previewTts() {
+        voiceEngineManager.speakText("This is how I will sound with your current settings.")
+    }
+
     fun openVoiceModelsSheet() {
         _isVoiceModelsSheetOpen.value = true
     }
+
+    private val _isTtsSettingsSheetOpen = MutableStateFlow(false)
+    val isTtsSettingsSheetOpen: StateFlow<Boolean> = _isTtsSettingsSheetOpen.asStateFlow()
+    fun openTtsSettingsSheet() { _isTtsSettingsSheetOpen.value = true }
+    fun closeTtsSettingsSheet() { _isTtsSettingsSheetOpen.value = false }
 
     fun closeVoiceModelsSheet() {
         _isVoiceModelsSheetOpen.value = false

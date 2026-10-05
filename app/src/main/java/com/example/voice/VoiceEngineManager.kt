@@ -648,6 +648,33 @@ class VoiceEngineManager(
         prefs.edit().putBoolean("conversation_mode", enabled).apply()
     }
 
+    /** Barge-in works in push-to-talk mode too, not only hands-free. */
+    fun isBargeEnabled(): Boolean = prefs.getBoolean("barge_enabled", true)
+    fun setBargeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("barge_enabled", enabled).apply()
+        if (!enabled) stopBargeMonitor()
+    }
+
+    // Tunables (persisted) — surfaced in the TTS settings sheet
+    var ttsSpeed: Float
+        get() = prefs.getFloat("tts_speed", 1.0f).coerceIn(0.5f, 2.0f)
+        set(v) { prefs.edit().putFloat("tts_speed", v.coerceIn(0.5f, 2.0f)).apply() }
+    var ttsPitch: Float
+        get() = prefs.getFloat("tts_pitch", 1.0f).coerceIn(0.5f, 2.0f)
+        set(v) { prefs.edit().putFloat("tts_pitch", v.coerceIn(0.5f, 2.0f)).apply() }
+    var ttsSpeakerId: Int
+        get() = prefs.getInt("tts_sid", 0).coerceIn(0, 53)
+        set(v) { prefs.edit().putInt("tts_sid", v.coerceIn(0, 53)).apply() }
+    var bargeThreshold: Float
+        get() = prefs.getFloat("barge_threshold", 600f).coerceIn(150f, 3000f)
+        set(v) { prefs.edit().putFloat("barge_threshold", v.coerceIn(150f, 3000f)).apply() }
+    var bargeWindowMs: Int
+        get() = prefs.getInt("barge_window_ms", 260).coerceIn(120, 800)
+        set(v) { prefs.edit().putInt("barge_window_ms", v.coerceIn(120, 800)).apply() }
+    var autoListenDelayMs: Int
+        get() = prefs.getInt("auto_listen_delay_ms", 500).coerceIn(0, 2000)
+        set(v) { prefs.edit().putInt("auto_listen_delay_ms", v.coerceIn(0, 2000)).apply() }
+
     fun startConversation(onAutoListen: () -> Unit, onBarge: () -> Unit) {
         this.onAutoListen = onAutoListen
         this.onBarge = onBarge
@@ -668,11 +695,13 @@ class VoiceEngineManager(
     private fun scheduleAutoListen() {
         if (!conversationActive || !isConversationEnabled()) return
         val cb = onAutoListen ?: return
-        mainHandler.postDelayed({ if (conversationActive && isConversationEnabled()) cb() }, 550)
+        mainHandler.postDelayed({ if (conversationActive && isConversationEnabled()) cb() }, autoListenDelayMs.toLong())
     }
 
     private fun startBargeMonitor() {
-        if (!conversationActive || bargeRunning) return
+        if (!isBargeEnabled()) return
+        val cb = onBarge ?: return // set when voice overlay is open
+        if (bargeRunning) return
         bargeRunning = true
         bargeThread = Thread {
             try {
@@ -698,6 +727,7 @@ class VoiceEngineManager(
                 }
                 bargeRecord = rec
                 val buf = ShortArray(1024)
+                val framesNeeded = ((bargeWindowMs / 1000.0) * 16000 / buf.size).coerceAtLeast(1)
                 var voiced = 0
                 rec.startRecording()
                 while (bargeRunning) {
@@ -706,10 +736,9 @@ class VoiceEngineManager(
                     var sum = 0.0
                     for (i in 0 until n) sum += buf[i].toDouble() * buf[i]
                     val rms = kotlin.math.sqrt(sum / n)
-                    if (rms > 850.0) voiced++ else voiced = 0
-                    if (voiced >= 5) { // ~320ms of sustained speech over our own voice
+                    if (rms > bargeThreshold) voiced++ else voiced = 0
+                    if (voiced >= framesNeeded) {
                         bargeRunning = false
-                        val cb = onBarge
                         mainHandler.post {
                             stopBargeMonitor()
                             cb?.invoke()
@@ -748,7 +777,7 @@ class VoiceEngineManager(
 
     fun setSpeakingState() {
         withMain { _voiceState.value = VoiceState.SPEAKING }
-        if (isConversationEnabled()) startBargeMonitor()
+        startBargeMonitor()
     }
 
     /** Update the on-screen live speech caption while tokens stream in. */
@@ -762,7 +791,8 @@ class VoiceEngineManager(
      */
     fun openLanSpeechSession(): LanTtsEngine.LanTtsSession? {
         if (!canStreamViaLan()) return null
-        return lanEngine.openSession().also { activeLanSession = it }
+        lanEngine.sid = ttsSpeakerId
+        return lanEngine.openSession(speed = ttsSpeed.toDouble()).also { activeLanSession = it }
     }
 
     /**
@@ -831,6 +861,8 @@ class VoiceEngineManager(
 
     private fun speakViaSystem(clean: String) {
         if (isTtsInitialized) {
+            textToSpeech?.setSpeechRate(ttsSpeed * 1.05f)
+            textToSpeech?.setPitch(ttsPitch)
             textToSpeech?.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "tailnode_voice_speech")
         } else {
             _voiceState.value = VoiceState.IDLE

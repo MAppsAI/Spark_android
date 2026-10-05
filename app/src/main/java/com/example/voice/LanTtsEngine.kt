@@ -26,6 +26,9 @@ class LanTtsEngine {
     @Volatile private var serverUrl: String = ""
     @Volatile private var healthy: Boolean = false
     @Volatile private var sampleRate: Int = 24000
+    @Volatile var numSpeakers: Int = 54
+        private set
+    @Volatile var sid: Int = 0
 
     private val stopFlag = AtomicBoolean(false)
     @Volatile private var playing = false
@@ -48,6 +51,8 @@ class LanTtsEngine {
                 healthy = Regex("\"ready\"\\s*:\\s*true").find(body) != null
                 val m = Regex("\"sample_rate\"\\s*:\\s*(\\d+)").find(body)
                 m?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }?.let { sampleRate = it }
+                val sp = Regex("\"speakers\"\\s*:\\s*(\\d+)").find(body)
+                sp?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }?.let { numSpeakers = it }
                 healthy
             }
         } catch (e: Throwable) {
@@ -179,7 +184,7 @@ class LanTtsEngine {
                     if (sessionStop.get()) break
                     val sentence = item as? String ?: continue
                     try {
-                        val url = "$serverUrl/tts?text=${URLEncoder.encode(sentence, "UTF-8")}&sid=0&speed=$speed"
+                        val url = "$serverUrl/tts?text=${URLEncoder.encode(sentence, "UTF-8")}&sid=$sid&speed=$speed"
                         val req = Request.Builder().url(url).build()
                         client.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) { failed = true; return }
