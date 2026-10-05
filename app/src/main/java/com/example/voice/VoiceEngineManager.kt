@@ -765,7 +765,6 @@ class VoiceEngineManager(
                 var consecLoud = 0
                 var armed = false
                 var floor = 1.0
-                var voiced = 0
                 var fired = false
                 while (bargeRunning) {
                     val rms = frameRms()
