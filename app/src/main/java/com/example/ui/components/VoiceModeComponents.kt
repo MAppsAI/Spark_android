@@ -880,7 +880,7 @@ fun TtsSettingsSheet(
 
             Text("VOICE", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            slider("Speed", speed, 0.5f..2.0f, 0.05f, { String.format(java.util.Locale.US, "%.2f×") }, onSpeed)
+            slider("Speed", speed, 0.5f..2.0f, 0.05f, { String.format(java.util.Locale.US, "%.2f×", it) }, onSpeed)
             slider("Pitch", pitch, 0.5f..2.0f, 0.05f, { String.format(java.util.Locale.US, "%.2f", it) }, onPitch)
             slider("Speaker (Kokoro voice)", speakerId.toFloat(), 0f..maxSpeaker.toFloat(), 1f, { "sid ${it.toInt()}" }, { onSpeaker(it.toInt()) })
             Text(
