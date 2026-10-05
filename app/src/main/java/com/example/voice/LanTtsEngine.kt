@@ -119,7 +119,7 @@ class LanTtsEngine {
                 AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build()
                     )
@@ -142,20 +142,25 @@ class LanTtsEngine {
             }
             track = at
             playing = true
-            try {
-                at.play()
-            } catch (_: Throwable) {
-                failed = true
-                try { at.release() } catch (_: Throwable) {}
-                playing = false
-                return false
-            }
             val buf = ByteArray(4096)
+            var started = false
             try {
                 while (!sessionStop.get()) {
                     val item = pcmQ.take()
                     if (item === QUEUE_END) break
                     val pcm = item as? ByteArray ?: continue
+                    // play() only once there is real data queued: an idle
+                    // playing AudioTrack emits near-zero filler that the
+                    // Pixel amp raises, audible as hiss between sentences
+                    if (!started) {
+                        try { at.play() } catch (_: Throwable) {
+                            failed = true
+                            try { at.release() } catch (_: Throwable) {}
+                            playing = false
+                            return false
+                        }
+                        started = true
+                    }
                     var off = 0
                     while (off < pcm.size && !sessionStop.get()) {
                         val n = minOf(buf.size, pcm.size - off)
@@ -272,7 +277,7 @@ class LanTtsEngine {
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
