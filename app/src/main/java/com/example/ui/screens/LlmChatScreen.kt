@@ -1150,6 +1150,7 @@ fun LlmChatScreen(
         var spPitch by remember { mutableFloatStateOf(viewModel.getTtsPitch()) }
         var spSid by remember { mutableIntStateOf(viewModel.getTtsSpeakerId()) }
         var bargeOn by remember { mutableStateOf(viewModel.isBargeEnabled()) }
+        var callMic by remember { mutableStateOf(viewModel.isBargeCallMic()) }
         var bargeThresh by remember { mutableFloatStateOf(viewModel.getBargeThreshold()) }
         var bargeMargin by remember { mutableFloatStateOf(viewModel.getBargeMultiplier()) }
         var bargeMs by remember { mutableIntStateOf(viewModel.getBargeWindowMs()) }
@@ -1160,6 +1161,8 @@ fun LlmChatScreen(
             speakerId = spSid,
             maxSpeaker = 53,
             bargeEnabled = bargeOn,
+            callMic = callMic,
+            onCallMic = { callMic = it; viewModel.setBargeCallMic(it) },
             bargeThreshold = bargeThresh,
             bargeMultiplier = bargeMargin,
             bargeWindowMs = bargeMs,

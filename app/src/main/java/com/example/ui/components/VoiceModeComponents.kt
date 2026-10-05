@@ -830,6 +830,8 @@ fun TtsSettingsSheet(
     speakerId: Int,
     maxSpeaker: Int,
     bargeEnabled: Boolean,
+    callMic: Boolean = false,
+    onCallMic: (Boolean) -> Unit = {},
     bargeThreshold: Float,
     bargeMultiplier: Float,
     bargeWindowMs: Int,
@@ -924,6 +926,24 @@ fun TtsSettingsSheet(
                 )
             }
             if (bargeEnabled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Call-mode mic (AEC)", fontSize = 12.sp, color = TextSecondary)
+                        Text(
+                            "Off = no speaker whine but stricter barge margin. Turn on only if barge-in stops hearing you.",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = callMic,
+                        onCheckedChange = onCallMic
+                    )
+                }
                 slider("Mic sensitivity (lower = more sensitive)", bargeThreshold, 150f..3000f, 50f, { it.toInt().toString() }, onBargeThreshold)
                 slider("Voice-over-echo margin", bargeMultiplier, 1.2f..5.0f, 0.1f, { String.format(java.util.Locale.US, "%.1f×", it) }, onBargeMultiplier)
                 slider("Speech hold (ms)", bargeWindowMs.toFloat(), 120f..800f, 20f, { "${it.toInt()} ms" }, { onBargeWindowMs(it.toInt()) })

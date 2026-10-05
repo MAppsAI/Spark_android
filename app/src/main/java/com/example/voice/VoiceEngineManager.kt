@@ -649,6 +649,12 @@ class VoiceEngineManager(
     }
 
     /** Barge-in works in push-to-talk mode too, not only hands-free. */
+    /** VOICE_COMMUNICATION forces call-mode audio (AEC+NS) which on Pixels
+     *  adds an audible high-pitch whine to playback. Default to the plain
+     *  recognition mic; the calibration-floor handles echo without AEC. */
+    fun isBargeCallMic(): Boolean = prefs.getBoolean("barge_call_mic", false)
+    fun setBargeCallMic(on: Boolean) { prefs.edit().putBoolean("barge_call_mic", on).apply() }
+
     fun isBargeEnabled(): Boolean = prefs.getBoolean("barge_enabled", true)
     fun setBargeEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("barge_enabled", enabled).apply()
@@ -717,7 +723,10 @@ class VoiceEngineManager(
                 if (minBuf <= 0) return@Thread
                 val rec = try {
                     android.media.AudioRecord(
-                        android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                        if (isBargeCallMic())
+                            android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                        else
+                            android.media.MediaRecorder.AudioSource.MIC,
                         sr,
                         android.media.AudioFormat.CHANNEL_IN_MONO,
                         android.media.AudioFormat.ENCODING_PCM_16BIT,

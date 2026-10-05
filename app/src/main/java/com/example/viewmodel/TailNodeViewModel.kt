@@ -1106,7 +1106,9 @@ class TailNodeViewModel(
     fun getAutoListenDelayMs(): Int = voiceEngineManager.autoListenDelayMs
     fun setAutoListenDelayMs(v: Int) { voiceEngineManager.autoListenDelayMs = v }
     fun isBargeEnabled(): Boolean = voiceEngineManager.isBargeEnabled()
-    fun setBargeEnabled(enabled: Boolean) = voiceEngineManager.setBargeEnabled(enabled)
+    fun setBargeEnabled(enabled: Boolean) { voiceEngineManager.setBargeEnabled(enabled) }
+    fun isBargeCallMic(): Boolean = voiceEngineManager.isBargeCallMic()
+    fun setBargeCallMic(on: Boolean) { voiceEngineManager.setBargeCallMic(on) }
 
     fun previewTts() {
         voiceEngineManager.speakText("This is how I will sound with your current settings.")
