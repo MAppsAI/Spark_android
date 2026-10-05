@@ -819,6 +819,7 @@ fun TtsSettingsSheet(
     maxSpeaker: Int,
     bargeEnabled: Boolean,
     bargeThreshold: Float,
+    bargeMultiplier: Float,
     bargeWindowMs: Int,
     autoListenDelayMs: Int,
     onSpeed: (Float) -> Unit,
@@ -826,6 +827,7 @@ fun TtsSettingsSheet(
     onSpeaker: (Int) -> Unit,
     onBargeEnabled: (Boolean) -> Unit,
     onBargeThreshold: (Float) -> Unit,
+    onBargeMultiplier: (Float) -> Unit,
     onBargeWindowMs: (Int) -> Unit,
     onAutoListenDelayMs: (Int) -> Unit,
     onPreview: () -> Unit,
@@ -911,9 +913,10 @@ fun TtsSettingsSheet(
             }
             if (bargeEnabled) {
                 slider("Mic sensitivity (lower = more sensitive)", bargeThreshold, 150f..3000f, 50f, { it.toInt().toString() }, onBargeThreshold)
+                slider("Voice-over-echo margin", bargeMultiplier, 1.2f..5.0f, 0.1f, { String.format(java.util.Locale.US, "%.1f×", it) }, onBargeMultiplier)
                 slider("Speech hold (ms)", bargeWindowMs.toFloat(), 120f..800f, 20f, { "${it.toInt()} ms" }, { onBargeWindowMs(it.toInt()) })
                 Text(
-                    "Interrupts itself talking? Raise sensitivity number. Doesn't hear you? Lower it or raise hold.",
+                    "The assistant now auto-calibrates its own echo for ~1s after it starts talking, then only interrupts on speech above that. Raise margin if it self-interrupts; lower sensitivity if it never hears you.",
                     fontSize = 10.sp,
                     color = TextMuted
                 )

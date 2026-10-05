@@ -666,8 +666,11 @@ class VoiceEngineManager(
         get() = prefs.getInt("tts_sid", 0).coerceIn(0, 53)
         set(v) { prefs.edit().putInt("tts_sid", v.coerceIn(0, 53)).apply() }
     var bargeThreshold: Float
-        get() = prefs.getFloat("barge_threshold", 600f).coerceIn(150f, 3000f)
+        get() = prefs.getFloat("barge_threshold", 500f).coerceIn(150f, 3000f)
         set(v) { prefs.edit().putFloat("barge_threshold", v.coerceIn(150f, 3000f)).apply() }
+    var bargeMultiplier: Float
+        get() = prefs.getFloat("barge_multiplier", 1.8f).coerceIn(1.2f, 5.0f)
+        set(v) { prefs.edit().putFloat("barge_multiplier", v.coerceIn(1.2f, 5.0f)).apply() }
     var bargeWindowMs: Int
         get() = prefs.getInt("barge_window_ms", 260).coerceIn(120, 800)
         set(v) { prefs.edit().putInt("barge_window_ms", v.coerceIn(120, 800)).apply() }
@@ -730,13 +733,32 @@ class VoiceEngineManager(
                 val framesNeeded = (bargeWindowMs.toLong() * 16 / buf.size).coerceAtLeast(1).toInt()
                 var voiced = 0
                 rec.startRecording()
-                while (bargeRunning) {
+
+                fun frameRms(): Double {
                     val n = rec.read(buf, 0, buf.size)
-                    if (n <= 0) break
+                    if (n <= 0) return -1.0
                     var sum = 0.0
                     for (i in 0 until n) sum += buf[i].toDouble() * buf[i]
-                    val rms = kotlin.math.sqrt(sum / n)
-                    if (rms > bargeThreshold) voiced++ else voiced = 0
+                    return kotlin.math.sqrt(sum / n)
+                }
+
+                // Warmup: AEC on VOICE_COMMUNICATION needs ~0.5-1s to cancel
+                // our own TTS bleed; during that window the raw echo is loud
+                // enough to fake a barge-in no matter the threshold. Measure
+                // the (post-echo) noise floor here and ignore speech entirely.
+                val warmFrames = (900L * 16 / buf.size).coerceAtLeast(1).toInt()
+                var floor = 0.0
+                repeat(warmFrames) {
+                    if (!bargeRunning) return@repeat
+                    val r = frameRms()
+                    if (r < 0) return@Thread
+                    if (r > floor) floor = r
+                }
+                val effThreshold = maxOf(bargeThreshold, floor * bargeMultiplier)
+                while (bargeRunning) {
+                    val rms = frameRms()
+                    if (rms < 0) break
+                    if (rms > effThreshold) voiced++ else voiced = 0
                     if (voiced >= framesNeeded) {
                         bargeRunning = false
                         mainHandler.post {

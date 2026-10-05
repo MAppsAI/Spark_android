@@ -1099,6 +1099,8 @@ class TailNodeViewModel(
     fun setTtsSpeakerId(v: Int) { voiceEngineManager.ttsSpeakerId = v }
     fun getBargeThreshold(): Float = voiceEngineManager.bargeThreshold
     fun setBargeThreshold(v: Float) { voiceEngineManager.bargeThreshold = v }
+    fun getBargeMultiplier(): Float = voiceEngineManager.bargeMultiplier
+    fun setBargeMultiplier(v: Float) { voiceEngineManager.bargeMultiplier = v }
     fun getBargeWindowMs(): Int = voiceEngineManager.bargeWindowMs
     fun setBargeWindowMs(v: Int) { voiceEngineManager.bargeWindowMs = v }
     fun getAutoListenDelayMs(): Int = voiceEngineManager.autoListenDelayMs
