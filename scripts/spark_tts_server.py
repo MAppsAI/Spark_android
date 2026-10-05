@@ -38,8 +38,88 @@ _ARGS = None
 _T0 = time.time()
 
 
+_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+         "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+         "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+         "eighty", "ninety"]
+
+
+def _int_words(n: int) -> str:
+    if n < 0:
+        return "minus " + _int_words(-n)
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        t, r = divmod(n, 10)
+        return _TENS[t] + ("-" + _ONES[r] if r else "")
+    if n < 1000:
+        h, r = divmod(n, 100)
+        return _ONES[h] + " hundred" + (" " + _int_words(r) if r else "")
+    for scale, name in ((10 ** 12, "trillion"), (10 ** 9, "billion"),
+                        (10 ** 6, "million"), (10 ** 3, "thousand")):
+        if n >= scale:
+            q, r = divmod(n, scale)
+            return _int_words(q) + " " + name + (" " + _int_words(r) if r else "")
+    return str(n)  # unreachable for sane sizes
+
+
+def _digits_words(s: str) -> str:
+    return " ".join(_ONES[int(c)] for c in s if c.isdigit())
+
+
+def _minutes_words(mm: str) -> str:
+    return ("oh " if mm[0] == "0" else "") + _int_words(int(mm))
+
+
+def numbers_to_words(text: str) -> str:
+    """Kokoro's token model silently drops bare digit runs ('2024' ->
+    nothing). Expand numbers to words before synthesis. Order matters:
+    percent, commas, clock, money, decimals, long runs, plain ints."""
+    # 45% -> 45 percent (before decimals so 45.5% works too)
+    text = re.sub(r"%\s*", " percent ", text)
+    # 1,500 -> 1500 (only between digits)
+    text = re.sub(r"(?<=\d),(?=\d\d\d\b)", "", text)
+
+    # 3:00 PM / 10:30 -> three o'clock PM / ten thirty
+    def _clock(m):
+        hh, mm = int(m.group(1)), m.group(2)
+        if mm == "00":
+            return _int_words(hh) + " o'clock"
+        return _int_words(hh) + " " + _minutes_words(mm)
+    text = re.sub(r"(?<!\d)(\d{1,2}):([0-5]\d)(?!\d)", _clock, text)
+
+    # $99 / $172.50 -> ninety-nine dollars / one hundred seventy-two dollars
+    # and fifty cents (before the generic decimal pass eats the dot)
+    def _money(m):
+        num = m.group(1)
+        if "." in num:
+            whole, frac = num.split(".", 1)
+            cents = frac[:2].ljust(2, "0")
+            out = _int_words(int(whole)) + " dollars"
+            if int(cents):
+                out += " and " + _int_words(int(cents)) + " cents"
+            return out
+        return _int_words(int(num)) + " dollars"
+    text = re.sub(r"\$(\d+(?:\.\d{1,2})?)", _money, text)
+
+    # any dot between digits -> "point" (handles 3.14, v1.2.3, etc.)
+    text = re.sub(r"(?<=\d)\.(?=\d)", " point ", text)
+
+    # long digit runs (phone ids etc, 8+ digits) read out digit-by-digit
+    text = re.sub(r"\b\d{8,}\b", lambda m: _digits_words(m.group(0)), text)
+    # remaining integers (years, prices, millions) -> words; no word-boundary
+    # so digit-runs glued to letters ("14x") still expand
+    text = re.sub(r"\d+", lambda m: _int_words(int(m.group(0))) + " ", text)
+    text = re.sub(r"\s+([.,;:!?])", r"\1", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text
+
+
 def sanitize_text(text: str) -> str:
-    """Strip emoji/symbol glyphs so Kokoro doesn't speak their names."""
+    """Strip emoji/symbol glyphs so Kokoro doesn't speak their names, and
+    expand numbers to words so Kokoro doesn't silently drop them."""
+    text = numbers_to_words(text)
     # Emoji blocks: pictographs, emoticons/symbols, transport, supplemental,
     # flags, plus variation selectors, ZWJ and keycaps.
     text = re.sub(
