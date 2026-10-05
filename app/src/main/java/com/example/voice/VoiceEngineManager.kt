@@ -727,7 +727,7 @@ class VoiceEngineManager(
                 }
                 bargeRecord = rec
                 val buf = ShortArray(1024)
-                val framesNeeded = ((bargeWindowMs / 1000.0) * 16000 / buf.size).coerceAtLeast(1)
+                val framesNeeded = (bargeWindowMs.toLong() * 16 / buf.size).coerceAtLeast(1).toInt()
                 var voiced = 0
                 rec.startRecording()
                 while (bargeRunning) {

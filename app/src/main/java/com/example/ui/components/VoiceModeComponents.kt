@@ -833,6 +833,7 @@ fun TtsSettingsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    @Composable
     fun slider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float, fmt: (Float) -> String, onChange: (Float) -> Unit) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -905,12 +906,7 @@ fun TtsSettingsSheet(
                 Text("Interrupt while Spark speaks", fontSize = 12.sp, color = TextSecondary)
                 androidx.compose.material3.Switch(
                     checked = bargeEnabled,
-                    onCheckedChange = onBargeEnabled,
-                    colors = androidx.compose.material3.SwitchDefaults.colors(
-                        thumbColor = CyberCyan,
-                        checkedTrackColor = CyberCyan.copy(alpha = 0.35f),
-                        uncheckedTrackColor = DarkSurfaceVariant
-                    )
+                    onCheckedChange = onBargeEnabled
                 )
             }
             if (bargeEnabled) {
