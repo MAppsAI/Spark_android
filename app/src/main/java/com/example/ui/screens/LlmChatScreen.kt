@@ -1151,6 +1151,7 @@ fun LlmChatScreen(
         var spSid by remember { mutableIntStateOf(viewModel.getTtsSpeakerId()) }
         var bargeOn by remember { mutableStateOf(viewModel.isBargeEnabled()) }
         var bargeThresh by remember { mutableFloatStateOf(viewModel.getBargeThreshold()) }
+        var bargeMargin by remember { mutableFloatStateOf(viewModel.getBargeMultiplier()) }
         var bargeMs by remember { mutableIntStateOf(viewModel.getBargeWindowMs()) }
         var autoMs by remember { mutableIntStateOf(viewModel.getAutoListenDelayMs()) }
         TtsSettingsSheet(
@@ -1160,6 +1161,7 @@ fun LlmChatScreen(
             maxSpeaker = 53,
             bargeEnabled = bargeOn,
             bargeThreshold = bargeThresh,
+            bargeMultiplier = bargeMargin,
             bargeWindowMs = bargeMs,
             autoListenDelayMs = autoMs,
             onSpeed = { spSpeed = it; viewModel.setTtsSpeed(it) },
@@ -1167,6 +1169,7 @@ fun LlmChatScreen(
             onSpeaker = { spSid = it; viewModel.setTtsSpeakerId(it) },
             onBargeEnabled = { bargeOn = it; viewModel.setBargeEnabled(it) },
             onBargeThreshold = { bargeThresh = it; viewModel.setBargeThreshold(it) },
+            onBargeMultiplier = { bargeMargin = it; viewModel.setBargeMultiplier(it) },
             onBargeWindowMs = { bargeMs = it; viewModel.setBargeWindowMs(it) },
             onAutoListenDelayMs = { autoMs = it; viewModel.setAutoListenDelayMs(it) },
             onPreview = { viewModel.previewTts() },

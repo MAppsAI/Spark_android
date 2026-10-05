@@ -754,7 +754,7 @@ class VoiceEngineManager(
                     if (r < 0) return@Thread
                     if (r > floor) floor = r
                 }
-                val effThreshold = maxOf(bargeThreshold, floor * bargeMultiplier)
+                val effThreshold = maxOf(bargeThreshold, (floor * bargeMultiplier).toFloat())
                 while (bargeRunning) {
                     val rms = frameRms()
                     if (rms < 0) break
