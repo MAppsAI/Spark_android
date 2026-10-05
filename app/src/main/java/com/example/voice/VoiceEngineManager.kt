@@ -751,30 +751,47 @@ class VoiceEngineManager(
                     return kotlin.math.sqrt(sum / n)
                 }
 
-                // Warmup: AEC on VOICE_COMMUNICATION needs ~0.5-1s to cancel
-                // our own TTS bleed; during that window the raw echo is loud
-                // enough to fake a barge-in no matter the threshold. Measure
-                // the (post-echo) noise floor here and ignore speech entirely.
-                val warmFrames = (900L * 16 / buf.size).coerceAtLeast(1).toInt()
-                var floor = 0.0
-                repeat(warmFrames) {
-                    if (!bargeRunning) return@repeat
-                    val r = frameRms()
-                    if (r < 0) return@Thread
-                    if (r > floor) floor = r
-                }
-                val effThreshold = maxOf(bargeThreshold, (floor * bargeMultiplier).toFloat())
+                // Calibration must track ACTUAL speech, not wall-clock: the
+                // mic opens when speaking starts, but the first audio arrives
+                // ~1s later (LLM + synth latency). Calibrating on the silence
+                // before that leaves a near-zero floor, so the first word's
+                // own speaker echo blows past it = instant self-interrupt.
+                // Now: ignore everything until the mic hears continuous audio
+                // (the assistant's echo), then set the barge floor from the
+                // echo's own loudness, slowly-adapting upward.
+                val gate = 120.0            // rms above room silence
+                val warmCap = (6000L * 16 / buf.size).coerceAtLeast(4).toInt()
+                var calFrames = 0
+                var consecLoud = 0
+                var armed = false
+                var floor = 1.0
+                var voiced = 0
+                var fired = false
                 while (bargeRunning) {
                     val rms = frameRms()
                     if (rms < 0) break
-                    if (rms > effThreshold) voiced++ else voiced = 0
-                    if (voiced >= framesNeeded) {
-                        bargeRunning = false
-                        mainHandler.post {
-                            stopBargeMonitor()
-                            cb?.invoke()
-                        }
-                        break
+                    val trig = maxOf(bargeThreshold, (floor * bargeMultiplier).toFloat())
+                    if (!armed) {
+                        if (rms > gate) consecLoud++ else consecLoud = 0
+                        if (rms > floor) floor = rms
+                        calFrames++
+                        // arm once real audio has been seen for ~200ms
+                        if (consecLoud >= 3 && calFrames >= 3) armed = true
+                        if (calFrames >= warmCap) armed = true
+                    } else {
+                        // slow rising adaptation only (guards louder sentences
+                        // without swallowing a user barge: 260ms trigger is
+                        // far faster than the ~4s adaptation time constant)
+                        if (rms > floor) floor += (rms - floor) * 0.004
+                    }
+                    if (rms > trig) voiced++ else voiced = 0
+                    if (voiced >= framesNeeded) { fired = true; break }
+                }
+                if (fired) {
+                    bargeRunning = false
+                    mainHandler.post {
+                        stopBargeMonitor()
+                        cb?.invoke()
                     }
                 }
             } catch (_: Throwable) {
