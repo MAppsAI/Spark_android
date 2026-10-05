@@ -85,6 +85,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -111,6 +113,7 @@ import com.example.data.model.TailNode
 import com.example.network.SearchResult
 import com.example.network.SearchSnippet
 import com.example.ui.components.VoiceModeDialog
+import com.example.ui.components.TtsSettingsSheet
 import com.example.ui.components.VoiceModelsSheet
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.SparkBlue
@@ -1119,6 +1122,7 @@ fun LlmChatScreen(
                 if (it && voiceState == VoiceState.IDLE) viewModel.startVoiceListening()
             },
             onOpenModelManager = { viewModel.openVoiceModelsSheet() },
+            onOpenTtsSettings = { viewModel.openTtsSettingsSheet() },
             onDismiss = { viewModel.closeVoiceMode() }
         )
     }
@@ -1136,6 +1140,37 @@ fun LlmChatScreen(
             onSetVoiceSystemPrompt = { viewModel.setVoiceSystemPrompt(it) },
             defaultVoiceSystemPrompt = viewModel.defaultVoiceSystemPrompt,
             onDismiss = { viewModel.closeVoiceModelsSheet() }
+        )
+    }
+
+    // Voice tuning sheet (speed/pitch/speaker/barge-in/hands-free timing)
+    val isTtsSettingsOpen by viewModel.isTtsSettingsSheetOpen.collectAsStateWithLifecycle()
+    if (isTtsSettingsOpen) {
+        var spSpeed by remember { mutableFloatStateOf(viewModel.getTtsSpeed()) }
+        var spPitch by remember { mutableFloatStateOf(viewModel.getTtsPitch()) }
+        var spSid by remember { mutableIntStateOf(viewModel.getTtsSpeakerId()) }
+        var bargeOn by remember { mutableStateOf(viewModel.isBargeEnabled()) }
+        var bargeThresh by remember { mutableFloatStateOf(viewModel.getBargeThreshold()) }
+        var bargeMs by remember { mutableIntStateOf(viewModel.getBargeWindowMs()) }
+        var autoMs by remember { mutableIntStateOf(viewModel.getAutoListenDelayMs()) }
+        TtsSettingsSheet(
+            speed = spSpeed,
+            pitch = spPitch,
+            speakerId = spSid,
+            maxSpeaker = 53,
+            bargeEnabled = bargeOn,
+            bargeThreshold = bargeThresh,
+            bargeWindowMs = bargeMs,
+            autoListenDelayMs = autoMs,
+            onSpeed = { spSpeed = it; viewModel.setTtsSpeed(it) },
+            onPitch = { spPitch = it; viewModel.setTtsPitch(it) },
+            onSpeaker = { spSid = it; viewModel.setTtsSpeakerId(it) },
+            onBargeEnabled = { bargeOn = it; viewModel.setBargeEnabled(it) },
+            onBargeThreshold = { bargeThresh = it; viewModel.setBargeThreshold(it) },
+            onBargeWindowMs = { bargeMs = it; viewModel.setBargeWindowMs(it) },
+            onAutoListenDelayMs = { autoMs = it; viewModel.setAutoListenDelayMs(it) },
+            onPreview = { viewModel.previewTts() },
+            onDismiss = { viewModel.closeTtsSettingsSheet() }
         )
     }
 }
