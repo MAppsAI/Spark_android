@@ -142,41 +142,55 @@ class DuckDuckGoSearchService {
     }
 
     private fun parseDdgHtml(html: String): List<SearchSnippet> {
+        // Real html.duckduckgo.com markup: one <div class="result results_links...">
+        // per hit, title link is <a class="result__a" href="//duckduckgo.com/l/?uddg=<urlencoded>">,
+        // snippet is <a class="result__snippet">...</a>. The old parser looked for
+        // result__url / result__title which never exist → zero results, and returned
+        // a placeholder URL. Parse per block so title/snippet can't mis-align, and
+        // skip ad blocks (redirect through y.js / ad_domain params).
         val list = mutableListOf<SearchSnippet>()
         try {
-            // Match result blocks: class="result__body" or class="result__snippet"
-            val linkPattern = Pattern.compile(
-                "<a[^>]+class=[\"']result__url[\"'][^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
-                Pattern.CASE_INSENSITIVE
-            )
-            val snippetPattern = Pattern.compile(
-                "<a[^>]+class=[\"']result__snippet[\"'][^>]*>(.*?)</a>",
-                Pattern.CASE_INSENSITIVE
-            )
-            val titlePattern = Pattern.compile(
-                "<a[^>]+class=[\"']result__title[\"'][^>]*>(.*?)</a>",
-                Pattern.CASE_INSENSITIVE
-            )
-
-            val snippetMatcher = snippetPattern.matcher(html)
-            val titleMatcher = titlePattern.matcher(html)
-
-            while (snippetMatcher.find() && list.size < 5) {
-                val rawSnippet = snippetMatcher.group(1) ?: continue
-                val cleanSnippet = rawSnippet.replace("<[^>]+>".toRegex(), "").trim()
-                var title = "Web Result ${list.size + 1}"
-                if (titleMatcher.find()) {
-                    title = titleMatcher.group(1)?.replace("<[^>]+>".toRegex(), "")?.trim() ?: title
-                }
-                list.add(
-                    SearchSnippet(
-                        title = title,
-                        snippet = cleanSnippet,
-                        url = "https://duckduckgo.com"
-                    )
+            val blockRe = Regex("(?s)<div[^>]+class=\"result results_links[^\"]*\".*?(?=<div[^>]+class=\"result results_links|<div[^>]+class=\"nav-link|\\Z)")
+            val linkRe = Regex("(?s)<a[^>]+class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>")
+            val snipRe = Regex("(?s)<a[^>]+class=\"result__snippet\"[^>]*>(.*?)</a>")
+            for (block in blockRe.findAll(html)) {
+                if (list.size >= 5) break
+                val b = block.value
+                if (b.contains("y.js?") || b.contains("ad_domain")) continue
+                val link = linkRe.find(b) ?: continue
+                val url = decodeDdgRedirect(link.groupValues[1]) ?: continue
+                val title = decodeEntities(link.groupValues[2].replace("<[^>]+>".toRegex(), "").trim())
+                val snippet = decodeEntities(
+                    snipRe.find(b)?.groupValues?.get(1)
+                        ?.replace("<[^>]+>".toRegex(), "")?.trim().orEmpty()
                 )
+                if (title.isBlank() && snippet.isBlank()) continue
+                list.add(SearchSnippet(title.ifBlank { url }, snippet, url))
             }
         } catch (_: Exception) {}
         return list
     }
+
+    /** //duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2F&rut=... -> https://example.com/ */
+    private fun decodeDdgRedirect(href: String): String? {
+        return try {
+            val raw = if (href.startsWith("//")) "https:$href" else href
+            val uddg = Regex("[?&]uddg=([^&]+)").find(raw)?.groupValues?.get(1)
+            val decoded = if (uddg != null)
+                java.net.URLDecoder.decode(uddg, "UTF-8")
+            else raw
+            if (decoded.contains("duckduckgo.com/y.js") || decoded.isBlank()) null else decoded
+        } catch (_: Exception) { null }
+    }
+
+    /** Decode HTML entities DDG embeds in titles/snippets. */
+    private fun decodeEntities(s: String): String = s
+        .replace("&quot;", "\"")
+        .replace("&#x27;", "'").replace("&#39;", "'")
+        .replace("&lt;", "<").replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .let { Regex("&#(\\d+);").replace(it) { m ->
+            try { String(Character.toChars(m.groupValues[1].toInt())) }
+            catch (_: Exception) { m.value }
+        } }
 }

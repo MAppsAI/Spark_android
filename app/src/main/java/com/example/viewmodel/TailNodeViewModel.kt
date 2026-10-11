@@ -913,6 +913,46 @@ class TailNodeViewModel(
         _isWebSearchEnabled.value = !_isWebSearchEnabled.value
     }
 
+    /**
+     * Executes the web_search tool the model asked for. Returns a compact JSON
+     * string for the model; never spoken — the voice filler is enqueued by
+     * the caller before this runs.
+     */
+    private suspend fun executeWebSearchTool(argsJson: String): String {
+        val query = try { JSONObject(argsJson).optString("query").trim() } catch (_: Exception) { "" }
+        if (query.isBlank()) return JSONObject().put("error", "missing query").toString()
+        _isSearchingWeb.value = true
+        _lastSearchQuery.value = query
+        return try {
+            val r = duckDuckGoSearchService.search(query)
+            _lastSearchResults.value = r
+            val arr = JSONArray()
+            r.snippets.take(5).forEach { s ->
+                arr.put(
+                    JSONObject()
+                        .put("title", s.title)
+                        .put("url", s.url)
+                        .put("snippet", s.snippet.take(400))
+                )
+            }
+            JSONObject()
+                .put("engine", "duckduckgo")
+                .put("query", query)
+                .put("results", arr)
+                .toString()
+        } catch (t: Throwable) {
+            JSONObject().put("error", t.localizedMessage ?: "search failed").toString()
+        } finally {
+            _isSearchingWeb.value = false
+        }
+    }
+
+    /** Extra system guidance when the user's DDG chip forces search usage. */
+    private fun webSearchHint(): String =
+        if (_isWebSearchEnabled.value)
+            " The user has explicitly enabled Web Search: call the web_search tool before answering, and mention what you found."
+        else ""
+
     fun setWebSearchEnabled(enabled: Boolean) {
         _isWebSearchEnabled.value = enabled
     }
@@ -956,7 +996,6 @@ class TailNodeViewModel(
         val activeModelName = chosen?.modelName ?: _selectedModel.value.ifBlank { targetNode.llmDefaultModel }
 
         val isSearchCommand = rawPrompt.startsWith("/search ", ignoreCase = true) || rawPrompt.startsWith("@web ", ignoreCase = true)
-        val shouldWebSearch = _isWebSearchEnabled.value || isSearchCommand
         val cleanQuery = if (isSearchCommand) {
             rawPrompt.replaceFirst(Regex("^/(search|web)\\s+", RegexOption.IGNORE_CASE), "").trim()
         } else rawPrompt
@@ -993,42 +1032,22 @@ class TailNodeViewModel(
 
                 repository.insertChatMessage(userMessage)
 
-                var finalPrompt = rawPrompt
-                if (shouldWebSearch) {
-                    _isSearchingWeb.value = true
-                    _lastSearchQuery.value = cleanQuery
-                    try {
-                        val searchResult = duckDuckGoSearchService.search(cleanQuery)
-                        _lastSearchResults.value = searchResult
-                        if (searchResult.isSuccess && searchResult.snippets.isNotEmpty()) {
-                            val formattedSnippets = searchResult.snippets.mapIndexed { idx, s ->
-                                "[Result ${idx + 1}] ${s.title}\nURL: ${s.url}\nSnippet: ${s.snippet}"
-                            }.joinToString("\n\n")
-
-                            finalPrompt = """
-                                User Question: $rawPrompt
-                                
-                                [Live DuckDuckGo Web Search Results for "$cleanQuery"]
-                                $formattedSnippets
-                                
-                                Instructions: Incorporate the above fresh DuckDuckGo web search results to provide a comprehensive, accurate answer with sources and links where relevant.
-                            """.trimIndent()
-                        }
-                    } catch (_: Exception) {}
-                    _isSearchingWeb.value = false
-                }
-
                 val currentHistory = try {
                     _chatMessages.value.filter { it.conversationId == currentConvId }
                 } catch (_: Exception) {
                     emptyList()
                 }
 
-                val response = llmService.sendChatMessage(
+                val forcedHint = if (isSearchCommand)
+                    " The user asked you to search the web for this. Call the web_search tool with a good query first."
+                else ""
+                val response = llmService.sendChatMessageWithSearchTool(
                     node = targetNode,
                     model = activeModelName,
-                    prompt = finalPrompt,
-                    history = currentHistory
+                    prompt = if (isSearchCommand) cleanQuery else rawPrompt,
+                    history = currentHistory,
+                    systemPrompt = "" + webSearchHint() + forcedHint,
+                    onToolCall = { _, args -> executeWebSearchTool(args) }
                 )
 
                 val assistantMessage = ChatMessage(
@@ -1223,29 +1242,45 @@ class TailNodeViewModel(
             }
 
             val history = _chatMessages.value.filter { it.conversationId == currentConvId }
-            val voiceSys = voiceEngineManager.getVoiceSystemPrompt()
-            val response = if (lanSession != null) {
-                llmService.sendChatMessageStreaming(
-                    node = targetNode,
-                    model = activeModelName,
-                    prompt = trimmed,
-                    history = history,
-                    systemPrompt = voiceSys
-                ) { token ->
-                    gate?.feed(token)
-                    speechCaption.append(token)
+            val voiceSys = voiceEngineManager.getVoiceSystemPrompt() +
+                " If you call a search tool, do not read results as a list; weave the facts into one or two short spoken sentences."
+            val toolHandler: suspend (String, String) -> String = { _, args ->
+                // Spoken filler while the search runs (LAN: rides the live
+                // session; other engines: quick system-TTS line). Tool results
+                // themselves are never streamed through onToken/TTS.
+                if (lanSession != null && !lanSession.isAborted) {
                     if (!playbackStarted) { playbackStarted = true; voiceEngineManager.setSpeakingState() }
-                    if (speechCaption.length % 120 < token.length) {
-                        voiceEngineManager.setLiveSpeechText(speechCaption.toString())
-                    }
+                    lanSession.enqueue("Searching the web now.")
+                } else {
+                    voiceEngineManager.speakText("Searching the web now.")
                 }
-            } else {
-                llmService.sendChatMessage(
+                executeWebSearchTool(args)
+            }
+            val response = if (lanSession != null) {
+                llmService.sendChatMessageWithSearchTool(
                     node = targetNode,
                     model = activeModelName,
                     prompt = trimmed,
                     history = history,
-                    systemPrompt = voiceSys
+                    systemPrompt = voiceSys,
+                    onToken = { token ->
+                        gate?.feed(token)
+                        speechCaption.append(token)
+                        if (!playbackStarted) { playbackStarted = true; voiceEngineManager.setSpeakingState() }
+                        if (speechCaption.length % 120 < token.length) {
+                            voiceEngineManager.setLiveSpeechText(speechCaption.toString())
+                        }
+                    },
+                    onToolCall = toolHandler
+                )
+            } else {
+                llmService.sendChatMessageWithSearchTool(
+                    node = targetNode,
+                    model = activeModelName,
+                    prompt = trimmed,
+                    history = history,
+                    systemPrompt = voiceSys,
+                    onToolCall = toolHandler
                 )
             }
 

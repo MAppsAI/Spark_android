@@ -630,6 +630,219 @@ class LocalLlmService {
         )
     }
 
+    /**
+     * Tool-calling chat loop: the model decides when to call web_search
+     * (DuckDuckGo) itself — the raw user phrase is never blind-piped into a
+     * search. Content deltas stream via onToken so voice playback keeps its
+     * sentence streaming; tool RESULTS are appended as role=tool messages and
+     * never emitted as tokens, so they can never reach the TTS. onToolCall
+     * executes a named tool and returns its JSON result string.
+     * Degrades to plain streaming chat when the endpoint rejects tools.
+     */
+    private class ToolCallAcc(var id: String, var name: String) {
+        val args = StringBuilder()
+    }
+
+    suspend fun sendChatMessageWithSearchTool(
+        node: TailNode,
+        model: String,
+        prompt: String,
+        history: List<ChatMessage> = emptyList(),
+        systemPrompt: String = "",
+        onToken: (String) -> Unit = {},
+        onToolCall: suspend (name: String, argsJson: String) -> String
+    ): LlmResponse = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        val baseUrl = node.getEffectiveLlmBaseUrl()
+        val isOllama = node.llmType.uppercase() == "OLLAMA"
+        val endpointUrl = if (isOllama) {
+            if (baseUrl.endsWith("/api")) "$baseUrl/chat" else "$baseUrl/api/chat"
+        } else {
+            if (baseUrl.endsWith("/v1")) "$baseUrl/chat/completions" else "$baseUrl/v1/chat/completions"
+        }
+        val effectiveModel = model.ifBlank {
+            node.hermesModel.ifBlank {
+                node.llmDefaultModel.ifBlank {
+                    if (node.name.contains("spark", true) || baseUrl.contains("hermes", true)) "hermes-agent" else "default"
+                }
+            }
+        }
+
+        fun buildMessages(): JSONArray {
+            val arr = JSONArray()
+            if (systemPrompt.isNotBlank()) {
+                arr.put(JSONObject().put("role", "system").put("content", systemPrompt.trim()))
+            }
+            for (msg in history.takeLast(16)) {
+                if (msg.role in listOf("user", "assistant", "system") && msg.content.isNotBlank()) {
+                    arr.put(JSONObject().put("role", msg.role).put("content", msg.content.trim()))
+                }
+            }
+            if (prompt.isNotBlank()) {
+                arr.put(JSONObject().put("role", "user").put("content", prompt.trim()))
+            }
+            return arr
+        }
+
+        val toolsDef = JSONArray().put(
+            JSONObject()
+                .put("type", "function")
+                .put(
+                    "function", JSONObject()
+                        .put("name", "web_search")
+                        .put(
+                            "description",
+                            "Search DuckDuckGo for fresh web information. Call this whenever the answer depends on current or live data: stock prices, quotes, news, weather, sports, releases, 'latest' anything. Never guess live facts."
+                        )
+                        .put(
+                            "parameters", JSONObject()
+                                .put("type", "object")
+                                .put("properties", JSONObject().put("query", JSONObject().put("type", "string").put("description", "concise keyword search query")))
+                                .put("required", JSONArray().put("query"))
+                        )
+                )
+        )
+
+        val messagesArray = buildMessages()
+
+        for (round in 0..2) {
+            val jsonPayload = JSONObject().apply {
+                put("model", effectiveModel)
+                put("messages", messagesArray)
+                put("stream", true)
+                if (isOllama) put("tools", toolsDef)
+                else {
+                    put("temperature", 0.7)
+                    put("tools", toolsDef)
+                    put("tool_choice", "auto")
+                }
+            }
+            val requestBuilder = Request.Builder().url(endpointUrl)
+                .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
+                .addHeader("Accept", "text/event-stream, application/x-ndjson, application/json")
+            val apiKey = node.llmApiKey.ifBlank { node.hermesApiKey }.trim()
+            if (apiKey.isNotBlank()) requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+
+            val content = StringBuilder()
+            val toolCalls = LinkedHashMap<Int, ToolCallAcc>()
+            var httpCode = 200
+            val call = client.newCall(requestBuilder.build())
+            activeCall.set(call)
+            try {
+                call.execute().use { response ->
+                    httpCode = response.code
+                    if (!response.isSuccessful) return@use
+                    val src = response.body?.source() ?: return@use
+                    while (true) {
+                        val line = src.readUtf8Line() ?: break
+                        val trimmed = line.trim()
+                        if (trimmed.isEmpty()) continue
+                        val payloadStr = if (trimmed.startsWith("data:")) {
+                            val d = trimmed.removePrefix("data:").trim()
+                            if (d == "[DONE]") break
+                            d
+                        } else trimmed
+                        if (!payloadStr.startsWith("{")) continue
+                        try {
+                            val obj = JSONObject(payloadStr)
+                            val choices = obj.optJSONArray("choices") ?: continue
+                            if (choices.length() == 0) continue
+                            val ch = choices.getJSONObject(0)
+                            val delta = ch.optJSONObject("delta")
+                            val msg = ch.optJSONObject("message")
+                            val tok = delta?.optString("content").orEmpty()
+                                .ifEmpty { msg?.optString("content").orEmpty() }
+                                .ifEmpty { ch.optString("text") }
+                            if (tok.isNotEmpty()) {
+                                content.append(tok)
+                                onToken(tok)
+                            }
+                            val tcArr = delta?.optJSONArray("tool_calls") ?: msg?.optJSONArray("tool_calls")
+                            if (tcArr != null) {
+                                for (i in 0 until tcArr.length()) {
+                                    val tc = tcArr.getJSONObject(i)
+                                    val idx = tc.optInt("index", i)
+                                    val acc = toolCalls.getOrPut(idx) { ToolCallAcc(tc.optString("id", "call_$idx"), "") }
+                                    if (tc.optString("id").isNotBlank()) acc.id = tc.getString("id")
+                                    val fn = tc.optJSONObject("function")
+                                    if (fn != null) {
+                                        fn.optString("name").takeIf { it.isNotBlank() }?.let { if (acc.name.isBlank()) acc.name = it }
+                                        val argDelta = fn.optString("arguments")
+                                        if (argDelta.isNotEmpty()) acc.args.append(argDelta)
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is IOException && (e.message?.contains("Canceled", true) == true || e.message?.contains("Socket closed", true) == true)) {
+                    return@withContext LlmResponse(text = "(Generation stopped by user)", stats = "Stopped", isLiveConnection = true, isError = false)
+                }
+                if (round == 0 && httpCode in 400..499) {
+                    // endpoint likely rejects tools — degrade to plain chat
+                    return@withContext sendChatMessage(node, model, prompt, history, systemPrompt)
+                }
+                return@withContext LlmResponse(
+                    text = content.toString().ifBlank { "⚠️ ${e.localizedMessage ?: "connection error"}" },
+                    stats = "Failed", isLiveConnection = false, isError = true, errorDetails = e.localizedMessage
+                )
+            } finally {
+                activeCall.compareAndSet(call, null)
+            }
+
+            if (round == 0 && httpCode in 400..499) {
+                return@withContext sendChatMessage(node, model, prompt, history, systemPrompt)
+            }
+
+            val calls = toolCalls.values.filter { it.name.isNotBlank() }
+            if (calls.isEmpty() || round == 2) {
+                val elapsed = System.currentTimeMillis() - startTime
+                if (content.isEmpty() && round == 0) {
+                    return@withContext sendChatMessage(node, model, prompt, history, systemPrompt)
+                }
+                return@withContext LlmResponse(
+                    text = content.toString(),
+                    stats = "stream+tools ${elapsed}ms • ${node.name}",
+                    isLiveConnection = true,
+                    isError = content.isEmpty()
+                )
+            }
+
+            // Echo the assistant's tool-call turn, then run each tool and
+            // append role=tool results — these never flow through onToken.
+            val asstMsg = JSONObject().put(
+                "tool_calls", JSONArray().apply {
+                    calls.forEach { c ->
+                        put(
+                            JSONObject()
+                                .put("id", c.id)
+                                .put("type", "function")
+                                .put("function", JSONObject().put("name", c.name).put("arguments", c.args.toString().ifBlank { "{}" }))
+                        )
+                    }
+                }
+            ).put("content", if (content.isNotEmpty()) content.toString() else JSONObject.NULL)
+            messagesArray.put(asstMsg)
+            for (c in calls) {
+                val result = if (c.name == "web_search") {
+                    try { onToolCall(c.name, c.args.toString().ifBlank { "{}" }) }
+                    catch (t: Throwable) { JSONObject().put("error", t.localizedMessage ?: "tool failed").toString() }
+                } else {
+                    JSONObject().put("error", "unknown tool ${c.name}").toString()
+                }
+                messagesArray.put(
+                    JSONObject()
+                        .put("role", "tool")
+                        .put("tool_call_id", c.id)
+                        .put("name", c.name)
+                        .put("content", result)
+                )
+            }
+        }
+        LlmResponse(text = "", stats = "tools exhausted", isLiveConnection = false, isError = true)
+    }
+
     private fun sendOllamaGenerateFallback(
         node: TailNode,
         model: String,
