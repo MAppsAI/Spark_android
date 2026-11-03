@@ -169,6 +169,18 @@ object ReadAloudController {
 
     fun onCaptureStarted() { setState(ReaderState.CAPTURING) }
 
+    /** True when the engine can stream audio sentence-by-sentence right now. */
+    fun canStream(): Boolean = try { engine().canStreamViaLan() } catch (_: Exception) { false }
+
+    /** Streaming path: audio begins while capture is still scrolling. */
+    fun onStreamingSpeechStarted() {
+        setState(ReaderState.SPEAKING)
+        acquireWake()
+        engine().setSpeakingState()
+    }
+
+    fun setLastText(text: String) { _lastText.value = text }
+
     fun onSpeechStarted(text: String) {
         _lastText.value = text
         setState(ReaderState.SPEAKING)

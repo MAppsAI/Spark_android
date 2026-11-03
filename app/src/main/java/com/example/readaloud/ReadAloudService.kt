@@ -128,17 +128,7 @@ class ReadAloudService : AccessibilityService() {
         ReadAloudController.onCaptureStarted()
         Thread {
             try {
-                var text = TextExtractor.extract(rootInActiveWindow)
-                if (text.isBlank()) {
-                    text = captureWithAutoScroll()
-                } else if (ReadAloudController.autoScrollEnabled.value) {
-                    text = captureWithAutoScroll()
-                }
-                if (text.isBlank()) {
-                    ReadAloudController.speakDirect("I can't find any readable text on this screen.")
-                } else {
-                    ReadAloudController.speakDirect(text)
-                }
+                captureStreamAndRead()
             } catch (e: Throwable) {
                 Log.e(TAG, "capture failed", e)
                 ReadAloudController.onSpeechEnded()
@@ -153,32 +143,88 @@ class ReadAloudService : AccessibilityService() {
     }
 
     /**
-     * Scroll the foreground window forward repeatedly, extracting new lines
-     * each step and appending. Stops when two consecutive scrolls add nothing
-     * or after MAX_SCROLLS.
+     * Progressive capture: extract the visible screen, feed it straight into
+     * a streaming LAN TTS session, THEN keep scrolling and feeding new lines
+     * while the first sentences are already playing. The old design captured
+     * every scroll frame before speaking — on long web pages that meant ~10s
+     * of silent scrolling before the first word.
+     * Falls back to full-capture-then-speak when LAN streaming is unavailable.
      */
-    private fun captureWithAutoScroll(): String {
-        val collected = ArrayList<String>()
+    private fun captureStreamAndRead() {
+        val eng = ReadAloudController.engine()
+        val session = if (ReadAloudController.canStream()) eng.openLanSpeechSession() else null
+        val gate: SentenceGate? = session?.let { s ->
+            SentenceGate(minWords = 3, cleaner = { eng.cleanForSpeech(it) }) { sent -> s.enqueue(sent) }
+        }
+        val all = StringBuilder()
         val seen = HashSet<String>()
-        var noNewRounds = 0
-        var scrolls = 0
-        val maxScrolls = if (ReadAloudController.autoScrollEnabled.value) 14 else 0
+        var announced = false
 
-        while (true) {
-            val root: AccessibilityNodeInfo = rootInActiveWindow ?: break
-            val text = TextExtractor.extract(root)
+        fun takeNew(text: String): Int {
             var added = 0
             for (raw in text.lineSequence()) {
                 val line = raw.trim()
-                if (line.isNotEmpty() && seen.add(line)) { collected.add(line); added++ }
+                if (line.isNotEmpty() && seen.add(line)) {
+                    if (all.isNotEmpty()) all.append('\n')
+                    all.append(line)
+                    gate?.feed(line + "\n")
+                    added++
+                }
             }
+            if (added > 0 && !announced && session != null) {
+                announced = true
+                ReadAloudController.onStreamingSpeechStarted()
+            }
+            return added
+        }
+
+        var noNewRounds = 0
+        var scrolls = 0
+        // Without streaming there's no audio until capture ends, so keep the
+        // dead time short: fewer scroll rounds when we can't play-while-scroll.
+        val maxScrolls = when {
+            !ReadAloudController.autoScrollEnabled.value -> 0
+            session != null -> 14
+            else -> 5
+        }
+
+        while (true) {
+            if (!capturing) break // user pressed stop
+            val root: AccessibilityNodeInfo = rootInActiveWindow ?: break
+            val added = takeNew(TextExtractor.extract(root))
             if (scrolls >= maxScrolls) break
             if (added == 0) { noNewRounds++; if (noNewRounds >= 2) break } else noNewRounds = 0
             if (!scrollForward()) break
             scrolls++
-            Thread.sleep(380) // let the window settle + re-render
+            Thread.sleep(350) // let the window settle + re-render
         }
-        return collected.joinToString("\n")
+
+        if (all.isEmpty()) {
+            session?.abort()
+            ReadAloudController.speakDirect("I can't find any readable text on this screen.")
+            return
+        }
+
+        if (session != null && gate != null) {
+            if (!announced) {
+                announced = true
+                ReadAloudController.onStreamingSpeechStarted()
+            }
+            ReadAloudController.setLastText(all.toString())
+            gate.flush()
+            session.finish()
+            val ok = session.join() // blocks until queued audio has played
+            eng.setIdleState()
+            if (!ok && !session.isAborted) {
+                // LAN died mid-flight: replay everything on-device/system
+                ReadAloudController.speakDirect(all.toString())
+            } else {
+                ReadAloudController.onSpeechEnded()
+            }
+        } else {
+            // No streaming engine: classic full-capture-then-speak
+            ReadAloudController.speakDirect(all.toString())
+        }
     }
 
     /** Tries node ACTION_SCROLL_FORWARD first, falls back to a swipe. */
