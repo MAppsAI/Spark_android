@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Spark</string>
+    <string name="read_aloud_service_description">Reads the text on your screen out loud. Tap the floating bubble or say "read it" and Spark speaks the current screen — articles, chats, anything. Screen content is only sent as text to your own LAN voice server when you use the LAN voice.</string>
 </resources>
 

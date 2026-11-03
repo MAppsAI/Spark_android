@@ -15,6 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.ui.screens.NodeDetailScreen
 import com.example.ui.screens.NodesListScreen
+import com.example.ui.screens.ReadAloudScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.TailNodeViewModel
 import com.example.viewmodel.TailNodeViewModelFactory
@@ -22,6 +23,7 @@ import com.example.viewmodel.TailNodeViewModelFactory
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.readaloud.ReadAloudController.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme(darkTheme = true) {
@@ -53,7 +55,8 @@ fun TailNodeApp() {
                     viewModel.selectNode(node)
                     viewModel.setSelectedTab(featureIndex)
                     navController.navigate("node_detail")
-                }
+                },
+                onNavigateToReadAloud = { navController.navigate("read_aloud") }
             )
         }
 
@@ -65,6 +68,10 @@ fun TailNodeApp() {
                     onBack = { navController.popBackStack() }
                 )
             }
+        }
+
+        composable("read_aloud") {
+            ReadAloudScreen(onBack = { navController.popBackStack() })
         }
     }
 }

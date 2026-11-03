@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Refresh
@@ -54,6 +55,7 @@ import com.example.ui.components.NodeCard
 import com.example.ui.components.SparkEmptyState
 import com.example.ui.components.heroWash
 import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkSurfaceVariant
@@ -69,6 +71,7 @@ import com.example.viewmodel.TailNodeViewModel
 fun NodesListScreen(
     viewModel: TailNodeViewModel,
     onNavigateToNode: (TailNode, Int) -> Unit,
+    onNavigateToReadAloud: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val nodes by viewModel.allNodes.collectAsStateWithLifecycle()
@@ -151,6 +154,17 @@ fun NodesListScreen(
                                 text = "Your Tailscale mesh",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted
+                            )
+                        }
+                        IconButton(
+                            onClick = { onNavigateToReadAloud() },
+                            modifier = Modifier.testTag("read_aloud_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.GraphicEq,
+                                contentDescription = "Read Aloud",
+                                tint = CyberCyan,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                         IconButton(
