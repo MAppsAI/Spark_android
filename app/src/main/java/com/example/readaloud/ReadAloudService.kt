@@ -199,7 +199,8 @@ class ReadAloudService : AccessibilityService() {
             }
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 260)).build()
-            return performGesture(gesture)
+            // callback+handler nullable; return value = gesture dispatched
+            return performGesture(gesture, null, main)
         } catch (_: Throwable) { return false }
     }
 
